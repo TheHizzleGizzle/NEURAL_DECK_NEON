@@ -4,6 +4,7 @@ import type {
   DeckTuningConfig,
   DivergenceLevel,
   OpenRouterModelInfo,
+  ProviderKeys,
   ReasoningPreset,
   ThemeMode,
   UiPreferences,
@@ -17,6 +18,10 @@ interface OptionsDialogProps {
   prefs: UiPreferences;
   tuning: DeckTuningConfig;
   openRouterConnected: boolean;
+  /** Native app: no server, so providers are called directly with the user's own keys. */
+  directProviderMode: boolean;
+  providerKeys: ProviderKeys;
+  onUpdateProviderKeys: (next: ProviderKeys) => void;
   openRouterConnecting: boolean;
   openRouterModels: OpenRouterModelInfo[];
   featuredModels: OpenRouterModelInfo[];
@@ -41,6 +46,96 @@ const PROVIDERS: Array<{ id: AiProvider; label: string; desc: string }> = [
   },
 ];
 
+const DIRECT_PROVIDERS: Array<{ id: AiProvider; label: string; desc: string }> = [
+  { id: "gemini", label: "Gemini", desc: "Your Google AI Studio key" },
+  { id: "openrouter", label: "OpenRouter", desc: "Your key, any model" },
+];
+
+interface ApiKeyFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  getKeyUrl: string;
+  getKeyLabel: string;
+  onChange: (next: string) => void;
+}
+
+/** Masked API key input. Keys live in app-private storage and are never exported. */
+const ApiKeyField: React.FC<ApiKeyFieldProps> = ({
+  id,
+  label,
+  value,
+  placeholder,
+  getKeyUrl,
+  getKeyLabel,
+  onChange,
+}) => {
+  const [reveal, setReveal] = useState(false);
+  return (
+    <div className="space-y-[6px]">
+      <div className="flex items-center justify-between gap-[8px]">
+        <label
+          htmlFor={id}
+          className="font-mono text-[11px] font-bold text-[var(--deck-text)]"
+        >
+          {label}
+        </label>
+        <span
+          className={`font-mono text-[10px] font-bold ${
+            value ? "text-[var(--deck-green)]" : "text-[var(--deck-amber)]"
+          }`}
+        >
+          {value ? "Key saved" : "No key"}
+        </span>
+      </div>
+      <div className="flex gap-[6px]">
+        <input
+          id={id}
+          type={reveal ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value.trim())}
+          placeholder={placeholder}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="px-terminal-input h-[36px] min-w-0 flex-1 px-[10px] font-mono text-[12px]"
+        />
+        <button
+          type="button"
+          onClick={() => setReveal((r) => !r)}
+          aria-label={reveal ? `Hide ${label}` : `Show ${label}`}
+          className="px-chip-idle h-[36px] shrink-0 cursor-pointer px-[10px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)]"
+        >
+          {reveal ? "Hide" : "Show"}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="px-grave-badge text-[var(--deck-crimson)] h-[36px] shrink-0 cursor-pointer px-[10px] font-mono text-[11px] font-bold"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="text-[11px] leading-[1.4] text-[var(--deck-text-muted)]">
+        Saved in this app&apos;s private storage (never in exports) and sent only to the
+        provider.{" "}
+        <a
+          href={getKeyUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="font-bold text-[var(--deck-cyan)] underline"
+        >
+          {getKeyLabel}
+        </a>
+      </div>
+    </div>
+  );
+};
+
 const DIVERGENCE_OPTIONS: Array<{ id: DivergenceLevel; label: string }> = [
   { id: "grounded", label: "Grounded" },
   { id: "balanced", label: "Balanced" },
@@ -59,6 +154,9 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
   prefs,
   tuning,
   openRouterConnected,
+  directProviderMode,
+  providerKeys,
+  onUpdateProviderKeys,
   openRouterConnecting,
   openRouterModels,
   featuredModels,
@@ -128,7 +226,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
               <div className="font-mono text-[11px] font-bold text-[var(--deck-text)]">
                 AI Engine &amp; Model Selection
               </div>
-              {tuning.provider === "openrouter" && (
+              {tuning.provider === "openrouter" && !directProviderMode && (
                 <span
                   className={`font-mono text-[10px] font-bold ${
                     openRouterConnected
@@ -142,7 +240,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
             </div>
 
             <div className="grid grid-cols-2 gap-[8px]">
-              {PROVIDERS.map((p) => {
+              {(directProviderMode ? DIRECT_PROVIDERS : PROVIDERS).map((p) => {
                 const active = tuning.provider === p.id;
                 return (
                   <button
@@ -171,6 +269,19 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
 
             {tuning.provider === "openrouter" ? (
               <div className="space-y-[10px] border border-[var(--deck-border)] bg-[var(--deck-panel-alt)] p-[12px]">
+                {directProviderMode ? (
+                  <ApiKeyField
+                    id="openrouter-api-key"
+                    label="OpenRouter API Key"
+                    value={providerKeys.openRouterApiKey}
+                    placeholder="sk-or-v1-..."
+                    getKeyUrl="https://openrouter.ai/keys"
+                    getKeyLabel="Get a key at openrouter.ai/keys"
+                    onChange={(next) =>
+                      onUpdateProviderKeys({ ...providerKeys, openRouterApiKey: next })
+                    }
+                  />
+                ) : (
                 <div className="flex flex-wrap items-center justify-between gap-[8px]">
                   <div className="min-w-0 flex-1">
                     <div className="font-mono text-[12px] font-bold text-[var(--deck-text)]">
@@ -188,7 +299,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                     <button
                       type="button"
                       onClick={onDisconnectOpenRouter}
-                      className="px-btn-crimson h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold whitespace-nowrap"
+                      className="px-grave-badge text-[var(--deck-crimson)] h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold whitespace-nowrap"
                     >
                       Disconnect
                     </button>
@@ -205,6 +316,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                     </button>
                   )}
                 </div>
+                )}
 
                 {/* Quick-Pick Models */}
                 <div className="border-t border-[var(--deck-border)] pt-[10px]">
@@ -275,6 +387,26 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+            ) : directProviderMode ? (
+              <div className="space-y-[8px] border border-[var(--deck-border)] bg-[var(--deck-panel-alt)] p-[12px]">
+                <ApiKeyField
+                  id="gemini-api-key"
+                  label="Gemini API Key"
+                  value={providerKeys.geminiApiKey}
+                  placeholder="AIza..."
+                  getKeyUrl="https://aistudio.google.com/apikey"
+                  getKeyLabel="Get a free key at aistudio.google.com/apikey"
+                  onChange={(next) =>
+                    onUpdateProviderKeys({ ...providerKeys, geminiApiKey: next })
+                  }
+                />
+                <div className="text-[11px] leading-[1.45] text-[var(--deck-text-muted)]">
+                  Uses <strong className="text-[var(--deck-text)]">Gemini 4</strong> (or{" "}
+                  <strong className="text-[var(--deck-text)]">Gemini 3.1 Flash Lite</strong> in Fast
+                  mode). Switch to <strong className="text-[var(--deck-text)]">OpenRouter</strong> to
+                  use Claude, GPT, DeepSeek, or Llama with your own OpenRouter key.
                 </div>
               </div>
             ) : (
@@ -443,7 +575,8 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
             )}
           </div>
 
-          {/* Install as App (PWA) */}
+          {/* Install as App (PWA) — not applicable inside the native app */}
+          {!directProviderMode && (
           <div className="border-t border-[var(--deck-border)] pt-[14px]">
             <div className="flex items-center justify-between gap-[10px]">
               <div>
@@ -476,6 +609,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
               )}
             </div>
           </div>
+          )}
 
           {/* Local Data Backup */}
           <div className="border-t border-[var(--deck-border)] pt-[14px]">
@@ -485,7 +619,9 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                   Local Data Backup
                 </div>
                 <div className="text-[11px] text-[var(--deck-text-muted)]">
-                  Download all sessions &amp; custom skills as JSON
+                  {directProviderMode
+                    ? "Save or share all sessions & custom skills as JSON (API keys are never included)"
+                    : "Download all sessions & custom skills as JSON"}
                 </div>
               </div>
               <button
@@ -493,7 +629,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                 onClick={onExportBackupJson}
                 className="px-chip-active h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold whitespace-nowrap"
               >
-                Download JSON
+                {directProviderMode ? "Save JSON" : "Download JSON"}
               </button>
             </div>
           </div>

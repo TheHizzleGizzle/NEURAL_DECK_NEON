@@ -3,6 +3,7 @@ import type {
   CreativeSkill,
   DeckTuningConfig,
   DivergenceLevel,
+  ProviderKeys,
   ReasoningPreset,
   UiPreferences,
 } from "../types/deck";
@@ -15,6 +16,41 @@ const ACTIVE_SESSION_KEY = "neural_deck_active_session_id";
 const TUNING_KEY = "neural_deck_tuning_v2";
 const LEGACY_AI_CONFIG_KEY = "neural_deck_ai_config_v1";
 const UI_PREFS_KEY = "neural_deck_ui_prefs_v1";
+// Kept separate from every other key so backups/exports can never include it.
+const PROVIDER_KEYS_KEY = "neural_deck_provider_keys_v1";
+
+export function loadProviderKeys(): ProviderKeys {
+  const empty: ProviderKeys = { geminiApiKey: "", openRouterApiKey: "" };
+  try {
+    const raw = localStorage.getItem(PROVIDER_KEYS_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as Partial<ProviderKeys>;
+    return {
+      geminiApiKey:
+        typeof parsed.geminiApiKey === "string" ? parsed.geminiApiKey.trim() : "",
+      openRouterApiKey:
+        typeof parsed.openRouterApiKey === "string"
+          ? parsed.openRouterApiKey.trim()
+          : "",
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function saveProviderKeys(keys: ProviderKeys): void {
+  try {
+    localStorage.setItem(
+      PROVIDER_KEYS_KEY,
+      JSON.stringify({
+        geminiApiKey: keys.geminiApiKey.trim(),
+        openRouterApiKey: keys.openRouterApiKey.trim(),
+      })
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export function getDefaultUiPreferences(): UiPreferences {
   return {

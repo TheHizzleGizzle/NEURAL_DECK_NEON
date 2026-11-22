@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NEURAL//DECK</string>
+    <string name="title_activity_main">NEURAL//DECK</string>
+    <string name="package_name">com.neuraldeck.app</string>
+    <string name="custom_url_scheme">com.neuraldeck.app</string>
+</resources>

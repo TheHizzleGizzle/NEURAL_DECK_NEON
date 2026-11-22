@@ -7,15 +7,27 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "start": "node server.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx --test src/utils/treeUtils.test.ts",
+    "android:sync": "vite build && cap sync android",
+    "android:apk": "pwsh -NoProfile -File scripts/build-apk.ps1"
   },
   "dependencies": {
-    "@google/genai": ">=2.29.1",
+    "@capacitor/android": "8.6.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/clipboard": "8.0.1",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/share": "8.0.3",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/plus-jakarta-sans": "5.3.0",
+    "@google/genai": "^3.6.1",
     "express": "^5.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.6.2",
     "@tailwindcss/vite": "^4.1.11",
     "@types/express": "^5.0.3",
     "@types/node": "^22.15.0",

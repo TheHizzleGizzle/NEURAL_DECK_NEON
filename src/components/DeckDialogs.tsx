@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import type { BrainstormSession, IdeaCard } from "../types/deck";
 import { parseTagsInput } from "../utils/treeUtils";
+import { IS_NATIVE } from "../platform/native";
 
 interface DialogShellProps {
   open: boolean;
@@ -657,7 +658,7 @@ export const ExportMarkdownDialog: React.FC<ExportMarkdownDialogProps> = ({
         onClick={onDownload}
         className="px-btn-cyan h-[34px] cursor-pointer px-[12px] font-mono text-[11px] font-bold"
       >
-        Download .md
+        {IS_NATIVE ? "Save .md" : "Download .md"}
       </button>
     </div>
   </DialogShell>

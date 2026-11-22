@@ -98,6 +98,16 @@ export interface OpenRouterModelInfo {
   contextLength?: number;
 }
 
+/**
+ * User-supplied provider API keys. Only used by the native app, which has no
+ * server to hold keys. Stored in app-private storage in their own slot and
+ * never written into the JSON backup export.
+ */
+export interface ProviderKeys {
+  geminiApiKey: string;
+  openRouterApiKey: string;
+}
+
 export interface DeckTuningConfig {
   provider: AiProvider;
   openRouterModel: string;

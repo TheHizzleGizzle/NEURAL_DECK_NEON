@@ -10,6 +10,15 @@ import type {
 } from "../types/deck";
 import { generateId } from "../data/starterSession";
 import { classifyQuadrant } from "../utils/treeUtils";
+import { loadProviderKeys } from "../utils/storage";
+import { IS_NATIVE } from "../platform/native";
+import { fetchOpenRouterCatalogDirect, runDirectChat } from "./directProviders";
+
+/**
+ * Native (APK) builds have no Express server, so they call providers directly
+ * with the user's own keys. The web build keeps using the server proxy.
+ */
+export const DIRECT_PROVIDER_MODE = IS_NATIVE;
 
 function divergenceDirective(level: DivergenceLevel): string {
   if (level === "grounded") {
@@ -219,6 +228,16 @@ async function callServerChat(params: {
   userPrompt: string;
   expectJson: boolean;
 }): Promise<string> {
+  if (DIRECT_PROVIDER_MODE) {
+    return runDirectChat({
+      tuning: params.tuning,
+      keys: loadProviderKeys(),
+      systemPrompt: params.systemPrompt,
+      userPrompt: params.userPrompt,
+      expectJson: params.expectJson,
+    });
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -249,6 +268,9 @@ async function callServerChat(params: {
 }
 
 export async function fetchGeminiStatus(): Promise<boolean> {
+  if (DIRECT_PROVIDER_MODE) {
+    return Boolean(loadProviderKeys().geminiApiKey);
+  }
   try {
     const res = await fetch("/api/ai/status");
     if (!res.ok) return false;
@@ -263,6 +285,11 @@ export async function fetchOpenRouterAuthUrl(): Promise<{
   url: string;
   callbackBaseUrl: string;
 }> {
+  if (DIRECT_PROVIDER_MODE) {
+    throw new Error(
+      "OpenRouter sign-in needs the web server. In the app, paste an OpenRouter API key in Options instead."
+    );
+  }
   const res = await fetch("/api/auth/openrouter/url");
   if (!res.ok) {
     throw new Error(`Could not start OpenRouter OAuth (HTTP ${res.status})`);
@@ -288,6 +315,9 @@ export async function fetchOpenRouterModels(): Promise<{
   featured: OpenRouterModelInfo[];
   models: OpenRouterModelInfo[];
 }> {
+  if (DIRECT_PROVIDER_MODE) {
+    return fetchOpenRouterCatalogDirect();
+  }
   const res = await fetch("/api/ai/models");
   if (!res.ok) {
     throw new Error(`Could not fetch OpenRouter models (HTTP ${res.status})`);

@@ -9,11 +9,13 @@ import type {
   IdeaCard,
   IdeaRatings,
   OpenRouterModelInfo,
+  ProviderKeys,
   RailTab,
   SynthesizedBrief,
   UiPreferences,
 } from "./types/deck";
 import {
+  DIRECT_PROVIDER_MODE,
   branchFromCard,
   disconnectOpenRouter,
   fetchOpenRouterAuthUrl,
@@ -23,15 +25,19 @@ import {
   sharpenSeedPrompt,
   synthesizeConvergenceBrief,
 } from "./ai/aiClient";
+import { FEATURED_OPENROUTER_MODELS } from "./ai/openRouterCatalog";
+import { IS_NATIVE, copyText, saveTextFile } from "./platform/native";
 import { generateId } from "./data/starterSession";
 import {
   getActiveSessionId,
   loadAllSkills,
   loadCustomSkills,
+  loadProviderKeys,
   loadSessions,
   loadTuningConfig,
   loadUiPreferences,
   saveCustomSkills,
+  saveProviderKeys,
   saveSessions,
   saveTuningConfig,
   saveUiPreferences,
@@ -81,14 +87,16 @@ import {
   TextPromptDialog,
 } from "./components/DeckDialogs";
 
-const FALLBACK_FEATURED_MODELS: OpenRouterModelInfo[] = [
-  { id: "anthropic/claude-sonnet-4", name: "Anthropic · Claude Sonnet 4" },
-  { id: "openai/gpt-4.1", name: "OpenAI · GPT-4.1" },
-  { id: "openai/o4-mini", name: "OpenAI · o4-mini" },
-  { id: "google/gemini-2.5-flash", name: "Google · Gemini 2.5 Flash" },
-  { id: "deepseek/deepseek-r1", name: "DeepSeek · R1" },
-  { id: "meta-llama/llama-4-maverick", name: "Meta · Llama 4 Maverick" },
-];
+const FALLBACK_FEATURED_MODELS: OpenRouterModelInfo[] = FEATURED_OPENROUTER_MODELS;
+
+/** Filesystem-safe export name (session titles are free text and may contain "/" etc.). */
+function toSafeFileName(base: string, ext: string): string {
+  const cleaned = base
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `${cleaned || "neural_deck"}.${ext}`;
+}
 
 interface ToastState {
   message: string;
@@ -131,6 +139,21 @@ export default function App() {
     FALLBACK_FEATURED_MODELS
   );
   const modelsLoadedRef = useRef(false);
+
+  // Native app only: user's own provider API keys (persisted on-device, never exported).
+  const [providerKeys, setProviderKeys] = useState<ProviderKeys>(() =>
+    loadProviderKeys()
+  );
+  const handleUpdateProviderKeys = (next: ProviderKeys) => {
+    setProviderKeys(next);
+    saveProviderKeys(next);
+  };
+  const openRouterConnected = DIRECT_PROVIDER_MODE
+    ? Boolean(providerKeys.openRouterApiKey)
+    : Boolean(openRouterSessionToken);
+  const geminiReady = DIRECT_PROVIDER_MODE
+    ? Boolean(providerKeys.geminiApiKey)
+    : true;
 
   // Sync .dark class on <html> and <meta name="theme-color"> cleanly whenever theme changes
   useEffect(() => {
@@ -381,7 +404,8 @@ export default function App() {
     showToast("Disconnected OpenRouter session.");
   };
 
-  const handleExportBackupJson = () => {
+  const handleExportBackupJson = async () => {
+    // Provider API keys live in a separate storage slot and are intentionally not included.
     const payload = {
       exportedAt: new Date().toISOString(),
       sessions,
@@ -389,18 +413,20 @@ export default function App() {
       tuning,
       uiPrefs,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `neural-deck-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast("Downloaded local JSON backup.");
+    try {
+      const result = await saveTextFile(
+        `neural-deck-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        JSON.stringify(payload, null, 2),
+        "application/json"
+      );
+      if (result === "downloaded") showToast("Downloaded local JSON backup.");
+      else if (result === "shared") showToast("Backup ready to save or share.");
+    } catch (err) {
+      setErrorDialog({
+        code: "Backup Failed",
+        details: err instanceof Error ? err.message : "Could not export backup.",
+      });
+    }
   };
 
   const starredCards = useMemo(
@@ -737,7 +763,7 @@ export default function App() {
       `[${card.skillBadge}] ${card.title}\n${card.summary}` +
       (card.rationale ? `\nWhy: ${card.rationale}` : "");
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       showToast("Copied idea to clipboard.");
     } catch {
       showToast("Clipboard unavailable.");
@@ -755,7 +781,7 @@ export default function App() {
         : []),
     ].join("\n");
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       showToast("Copied decision brief to clipboard.");
     } catch {
       showToast("Clipboard unavailable.");
@@ -928,20 +954,63 @@ export default function App() {
     [activeSession]
   );
 
-  const handleDownloadMarkdown = () => {
-    const blob = new Blob([exportedMarkdown], {
-      type: "text/markdown;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${activeSession.title.toLowerCase()}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast(`Downloaded ${activeSession.title.toLowerCase()}.md`);
+  const handleDownloadMarkdown = async () => {
+    const fileName = toSafeFileName(activeSession.title, "md");
+    try {
+      const result = await saveTextFile(fileName, exportedMarkdown, "text/markdown");
+      if (result === "downloaded") showToast(`Downloaded ${fileName}`);
+      else if (result === "shared") showToast(`${fileName} ready to save or share.`);
+    } catch (err) {
+      setErrorDialog({
+        code: "Export Failed",
+        details: err instanceof Error ? err.message : "Could not export Markdown.",
+      });
+    }
   };
+
+  /* --- Android hardware/gesture back: close the topmost overlay first --- */
+
+  const closeTopOverlayRef = useRef<() => boolean>(() => false);
+  useEffect(() => {
+    const close = (fn: () => void) => {
+      fn();
+      return true;
+    };
+    // Ordered topmost-first: dialogs that can open on top of sheets come earlier.
+    closeTopOverlayRef.current = () => {
+      if (errorDialog) return close(() => setErrorDialog(null));
+      if (banishTarget) return close(() => setBanishTarget(null));
+      if (forgeSkillOpen) return close(() => setForgeSkillOpen(false));
+      if (createSessionOpen) return close(() => setCreateSessionOpen(false));
+      if (renameSessionOpen) return close(() => setRenameSessionOpen(false));
+      if (sessionSwitcherOpen) return close(() => setSessionSwitcherOpen(false));
+      if (manualComposerState.open)
+        return close(() => setManualComposerState({ open: false, parentCard: null }));
+      if (exportDialogOpen) return close(() => setExportDialogOpen(false));
+      if (skillsSheetState.open)
+        return close(() => setSkillsSheetState({ open: false, targetCard: null }));
+      if (optionsOpen) return close(() => setOptionsOpen(false));
+      if (mobileRailOpen) return close(() => setMobileRailOpen(false));
+      return false;
+    };
+  });
+
+  useEffect(() => {
+    if (!IS_NATIVE) return;
+    let cancelled = false;
+    let removeListener: (() => void) | null = null;
+    void import("@capacitor/app").then(async ({ App: CapacitorApp }) => {
+      const handle = await CapacitorApp.addListener("backButton", () => {
+        if (!closeTopOverlayRef.current()) void CapacitorApp.minimizeApp();
+      });
+      if (cancelled) void handle.remove();
+      else removeListener = () => void handle.remove();
+    });
+    return () => {
+      cancelled = true;
+      removeListener?.();
+    };
+  }, []);
 
   const openMobileRail = (tab: RailTab) => {
     setRailTab(tab);
@@ -1039,7 +1108,7 @@ export default function App() {
             </button>
 
             {/* In-App PWA Install Button (auto-hides in standalone mode) */}
-            <PWAInstallButton compact />
+            {!IS_NATIVE && <PWAInstallButton compact />}
 
             {/* Dedicated Options Button (AI Engine, Theme, Display, PWA, Backup) */}
             <button
@@ -1288,6 +1357,28 @@ export default function App() {
               )}
             </main>
 
+            {/* Native app: prompt for an API key before the first AI call */}
+            {DIRECT_PROVIDER_MODE &&
+              (tuning.provider === "openrouter" ? !openRouterConnected : !geminiReady) && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-center gap-[8px] border-t border-[var(--deck-amber)]/40 bg-[var(--deck-panel-alt)] px-[12px] py-[8px]"
+                >
+                  <span className="flex-1 text-[12px] leading-[1.4] text-[var(--deck-text)]">
+                    {tuning.provider === "openrouter"
+                      ? "Add your OpenRouter API key to start sparking ideas."
+                      : "Add your Gemini API key to start sparking ideas."}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setOptionsOpen(true)}
+                    className="px-chip-active h-[32px] shrink-0 cursor-pointer px-[10px] font-mono text-[11px] font-bold whitespace-nowrap"
+                  >
+                    Add Key
+                  </button>
+                </div>
+              )}
+
             {/* BOTTOM SEED DOCK */}
             <footer className="shrink-0 border-t-2 border-[var(--deck-border)] bg-[var(--deck-panel)] px-[12px] pt-[10px] pb-[10px]">
               <textarea
@@ -1348,10 +1439,14 @@ export default function App() {
                 <div className="hidden flex-1 truncate text-right font-mono text-[10px] text-[var(--deck-text-faint)] sm:block">
                   Skill: {activeSkill?.badge ?? "SEED"} ·{" "}
                   {tuning.provider === "openrouter"
-                    ? openRouterSessionToken
+                    ? openRouterConnected
                       ? tuning.openRouterModel.split("/").pop()
+                      : DIRECT_PROVIDER_MODE
+                      ? "OpenRouter (Add key in Options)"
                       : "OpenRouter (Connect in Options)"
-                    : `Gemini 4 · ${tuning.divergence}`}
+                    : geminiReady
+                    ? `Gemini 4 · ${tuning.divergence}`
+                    : "Gemini (Add key in Options)"}
                 </div>
 
                 {/* Primary CTA: Spark Ideas */}
@@ -1422,7 +1517,10 @@ export default function App() {
         onClose={() => setOptionsOpen(false)}
         prefs={uiPrefs}
         tuning={tuning}
-        openRouterConnected={Boolean(openRouterSessionToken)}
+        openRouterConnected={openRouterConnected}
+        directProviderMode={DIRECT_PROVIDER_MODE}
+        providerKeys={providerKeys}
+        onUpdateProviderKeys={handleUpdateProviderKeys}
         openRouterConnecting={openRouterConnecting}
         openRouterModels={openRouterModels}
         featuredModels={featuredModels}
@@ -1430,7 +1528,7 @@ export default function App() {
         onDisconnectOpenRouter={handleDisconnectOpenRouter}
         onUpdatePrefs={handleUpdatePrefs}
         onUpdateTuning={handleUpdateTuning}
-        onExportBackupJson={handleExportBackupJson}
+        onExportBackupJson={() => void handleExportBackupJson()}
       />
 
       {/* SKILLS SHEET */}
@@ -1512,7 +1610,7 @@ export default function App() {
         onClose={() => setExportDialogOpen(false)}
         onCopy={async () => {
           try {
-            await navigator.clipboard.writeText(exportedMarkdown);
+            await copyText(exportedMarkdown);
             showToast("Copied Markdown to clipboard.");
           } catch {
             showToast("Clipboard unavailable.");
