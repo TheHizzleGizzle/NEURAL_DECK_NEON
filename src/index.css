@@ -1,0 +1,241 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Light Mode: Daylight Technical Blueprint */
+  --deck-void: #eef2f8;
+  --deck-panel: #f8fafd;
+  --deck-panel-alt: #e7edf6;
+  --deck-canvas: rgba(248, 250, 253, 0.88);
+  --deck-cartridge: #ffffff;
+  --deck-cartridge-selected: #fdf0f7;
+  --deck-cartridge-human: #effbf5;
+  --deck-subcard: #f1f5fb;
+  --deck-grave-card: #fff5f7;
+  --deck-grave-border: #f2b8c6;
+  --deck-input: #ffffff;
+  --deck-border: #c2d0e3;
+  --deck-border-strong: #879bb8;
+  --deck-shadow: rgba(15, 23, 42, 0.14);
+
+  --deck-text: #0f172a;
+  --deck-text-body: #1e293b;
+  --deck-text-muted: #475569;
+  --deck-text-faint: #64748b;
+
+  --deck-cyan: #0369a1;
+  --deck-cyan-btn-bg: #0284c7;
+  --deck-cyan-btn-border: #0369a1;
+  --deck-cyan-btn-text: #ffffff;
+  --deck-cyan-soft: rgba(2, 132, 199, 0.09);
+
+  --deck-magenta: #be185d;
+  --deck-magenta-bg: #fdf2f8;
+  --deck-magenta-soft: rgba(190, 24, 93, 0.1);
+  --deck-magenta-text-soft: #9d174d;
+
+  --deck-green: #047857;
+  --deck-green-bg: #ecfdf5;
+  --deck-green-soft: rgba(4, 120, 87, 0.1);
+  --deck-green-text-soft: #065f46;
+
+  --deck-crimson: #be123c;
+  --deck-crimson-bg: #fff1f2;
+  --deck-amber: #b45309;
+  --deck-amber-bg: rgba(180, 83, 9, 0.1);
+
+  --deck-chip-active-bg: #e0f2fe;
+  --deck-chip-idle-bg: #f1f5f9;
+  --deck-tab-shortlist-bg: #e0f2fe;
+  --deck-tab-grave-bg: #ffe4e8;
+  --deck-tab-tuning-bg: #dcfce7;
+}
+
+.dark {
+  /* Dark Mode: Midnight Cyber-Deck (Default) */
+  --deck-void: #080a12;
+  --deck-panel: #0f1424;
+  --deck-panel-alt: #0b101e;
+  --deck-canvas: rgba(10, 15, 29, 0.82);
+  --deck-cartridge: #151d33;
+  --deck-cartridge-selected: #1c2847;
+  --deck-cartridge-human: #13222b;
+  --deck-subcard: #131b2f;
+  --deck-grave-card: #161221;
+  --deck-grave-border: #3a1e2d;
+  --deck-input: #05070d;
+  --deck-border: #273659;
+  --deck-border-strong: #3b5284;
+  --deck-shadow: #030408;
+
+  --deck-text: #ecf6ff;
+  --deck-text-body: #d8e7f8;
+  --deck-text-muted: #8da4c7;
+  --deck-text-faint: #6d85ab;
+
+  --deck-cyan: #00f0ff;
+  --deck-cyan-btn-bg: #00f0ff;
+  --deck-cyan-btn-border: #ecf6ff;
+  --deck-cyan-btn-text: #050811;
+  --deck-cyan-soft: rgba(0, 240, 255, 0.07);
+
+  --deck-magenta: #ff2e93;
+  --deck-magenta-bg: #240b1c;
+  --deck-magenta-soft: rgba(255, 46, 147, 0.15);
+  --deck-magenta-text-soft: #ff8dc7;
+
+  --deck-green: #39ff88;
+  --deck-green-bg: #0d241b;
+  --deck-green-soft: rgba(57, 255, 136, 0.1);
+  --deck-green-text-soft: #8fffc0;
+
+  --deck-crimson: #ff3864;
+  --deck-crimson-bg: #260a15;
+  --deck-amber: #ffb800;
+  --deck-amber-bg: rgba(255, 184, 0, 0.1);
+
+  --deck-chip-active-bg: #1b324a;
+  --deck-chip-idle-bg: #11182b;
+  --deck-tab-shortlist-bg: #152238;
+  --deck-tab-grave-bg: #24101b;
+  --deck-tab-tuning-bg: #10221c;
+}
+
+@layer base {
+  * {
+    border-radius: 0 !important;
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--deck-void);
+    color: var(--deck-text);
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .font-mono {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--deck-cyan);
+    outline-offset: 1px;
+  }
+}
+
+/* Theme-aware pixel cyber-deck surfaces */
+.px-panel {
+  background-color: var(--deck-panel);
+  border: 2px solid var(--deck-border);
+}
+
+.px-cartridge {
+  background-color: var(--deck-cartridge);
+  border: 2px solid var(--deck-border-strong);
+  box-shadow: 3px 3px 0 0 var(--deck-shadow);
+}
+
+.px-cartridge-selected {
+  background-color: var(--deck-cartridge-selected);
+  border: 2px solid var(--deck-magenta);
+  box-shadow: 3px 3px 0 0 rgba(255, 46, 147, 0.25);
+}
+
+.px-cartridge-human {
+  background-color: var(--deck-cartridge-human);
+  border: 2px solid var(--deck-green);
+  box-shadow: 3px 3px 0 0 var(--deck-shadow);
+}
+
+.px-btn-cyan {
+  background-color: var(--deck-cyan-btn-bg);
+  border: 2px solid var(--deck-cyan-btn-border);
+  color: var(--deck-cyan-btn-text);
+  box-shadow: 2px 2px 0 0 rgba(0, 160, 220, 0.28);
+  transition: filter 140ms cubic-bezier(0.16, 1, 0.3, 1), transform 100ms ease;
+}
+.px-btn-cyan:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+
+.px-btn-magenta {
+  background-color: var(--deck-magenta-bg);
+  border: 2px solid var(--deck-magenta);
+  color: var(--deck-magenta);
+  box-shadow: 2px 2px 0 0 rgba(255, 46, 147, 0.24);
+  transition: filter 140ms cubic-bezier(0.16, 1, 0.3, 1), transform 100ms ease;
+}
+.px-btn-magenta:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+
+.px-btn-green {
+  background-color: var(--deck-green-bg);
+  border: 2px solid var(--deck-green);
+  color: var(--deck-green);
+  box-shadow: 2px 2px 0 0 rgba(4, 120, 87, 0.22);
+  transition: filter 140ms cubic-bezier(0.16, 1, 0.3, 1), transform 100ms ease;
+}
+.px-btn-green:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+
+.px-chip-active {
+  background-color: var(--deck-chip-active-bg);
+  border: 2px solid var(--deck-cyan);
+  color: var(--deck-cyan);
+}
+
+.px-chip-idle {
+  background-color: var(--deck-chip-idle-bg);
+  border: 1px solid var(--deck-border-strong);
+}
+
+.px-grave-badge {
+  background-color: var(--deck-crimson-bg);
+  border: 1px solid var(--deck-crimson);
+}
+
+.px-terminal-input {
+  background-color: var(--deck-input);
+  border: 2px solid var(--deck-border-strong);
+  color: var(--deck-text);
+}
+.px-terminal-input::placeholder {
+  color: var(--deck-text-faint);
+}
+.px-terminal-input:focus {
+  outline: none;
+  border-color: var(--deck-cyan);
+}
+
+/* Subtle theme-aware scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--deck-panel-alt);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--deck-border);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--deck-border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

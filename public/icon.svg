@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges">
+  <rect width="64" height="64" fill="#080A12" />
+  <rect x="4" y="4" width="56" height="56" fill="#0E1322" stroke="#2D3E66" stroke-width="2" />
+  <rect x="8" y="8" width="48" height="48" fill="none" stroke="#00F0FF" stroke-opacity="0.22" stroke-width="1" />
+  <!-- Pixel branching cyber-deck emblem -->
+  <rect x="14" y="26" width="12" height="12" fill="#00F0FF" />
+  <rect x="17" y="29" width="6" height="6" fill="#080A12" />
+  <!-- Stem + upper/lower branch rails -->
+  <rect x="26" y="30" width="8" height="4" fill="#00F0FF" />
+  <rect x="30" y="18" width="4" height="28" fill="#00F0FF" />
+  <rect x="34" y="18" width="6" height="4" fill="#00F0FF" />
+  <rect x="34" y="42" width="6" height="4" fill="#FF2E93" />
+  <!-- Upper child node (green human/quick-win node) -->
+  <rect x="40" y="14" width="10" height="10" fill="#39FF88" />
+  <rect x="43" y="17" width="4" height="4" fill="#080A12" />
+  <!-- Lower child node (magenta splice spark) -->
+  <rect x="40" y="38" width="10" height="10" fill="#FF2E93" />
+  <rect x="43" y="41" width="4" height="4" fill="#080A12" />
+</svg>

@@ -1,0 +1,8 @@
+{
+  "name": "Remix Neural-Deck3000",
+  "description": "Imported from GitHub: TheHizzleGizzle/Neural-Deck3000",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
