@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { CreativeSkill, IdeaCard } from "../types/deck";
 import { BottomSheetShell } from "./BottomSheetShell";
 import { PxChipIcon } from "./PixelIcons";
@@ -24,13 +24,19 @@ export const SkillsSheet: React.FC<SkillsSheetProps> = ({
   onDeleteCustomSkill,
   onOpenForgeDialog,
 }) => {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) setConfirmDeleteId(null);
+  }, [open]);
+
   const title = targetCard ? "Branch With Skill" : "Creative Skill Cartridges";
   const subtitle = targetCard
     ? `Apply a thinking skill to branch "${targetCard.title}"`
     : "Choose the default thinking skill used when sparking or quick-branching ideas.";
 
   return (
-    <BottomSheetShell open={open} onClose={onClose}>
+    <BottomSheetShell open={open} onClose={onClose} ariaLabel={title}>
       <div className="flex items-center gap-[8px]">
         <PxChipIcon size={18} color="var(--deck-magenta)" className="shrink-0" />
         <h2 className="flex-1 font-mono text-[14px] font-bold tracking-[0.05em] text-[var(--deck-magenta)]">
@@ -39,9 +45,17 @@ export const SkillsSheet: React.FC<SkillsSheetProps> = ({
         <button
           type="button"
           onClick={onOpenForgeDialog}
-          className="px-btn-magenta flex h-[30px] shrink-0 cursor-pointer items-center px-[10px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110"
+          className="px-btn-magenta px-touch-ctrl flex h-[30px] shrink-0 cursor-pointer items-center px-[10px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110"
         >
           + Forge Skill
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={`Close ${title}`}
+          className="px-chip-idle px-touch-ctrl flex h-[30px] min-w-[30px] shrink-0 cursor-pointer items-center justify-center px-[8px] font-mono text-[12px] font-bold text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+        >
+          ×
         </button>
       </div>
 
@@ -52,6 +66,7 @@ export const SkillsSheet: React.FC<SkillsSheetProps> = ({
       <div className="mt-[12px] flex flex-col gap-[8px]">
         {skills.map((skill) => {
           const isCurrent = activeSkill?.id === skill.id;
+          const confirmingDelete = confirmDeleteId === skill.id;
           return (
             <div
               key={skill.id}
@@ -65,7 +80,7 @@ export const SkillsSheet: React.FC<SkillsSheetProps> = ({
                   onSelectSkill(skill, targetCard);
                   onClose();
                 }}
-                className="flex-1 cursor-pointer p-[12px] text-left hover:brightness-105"
+                className="flex-1 cursor-pointer p-[11px] text-left hover:brightness-105"
               >
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[11px] font-bold text-[var(--deck-cyan)]">
@@ -75,21 +90,42 @@ export const SkillsSheet: React.FC<SkillsSheetProps> = ({
                     {skill.name}
                   </span>
                 </div>
-                <p className="mt-[4px] text-[12px] text-[var(--deck-text-muted)]">
+                <p className="mt-[3px] text-[12px] text-[var(--deck-text-muted)]">
                   {skill.subtitle}
                 </p>
               </button>
 
-              {!skill.builtIn && (
-                <button
-                  type="button"
-                  onClick={() => onDeleteCustomSkill(skill.id)}
-                  aria-label={`Delete custom skill ${skill.name}`}
-                  className="cursor-pointer border-l border-[var(--deck-border)] px-[12px] font-mono text-[10px] font-bold text-[var(--deck-crimson)] hover:bg-[var(--deck-crimson-bg)]"
-                >
-                  Delete
-                </button>
-              )}
+              {!skill.builtIn &&
+                (confirmingDelete ? (
+                  <div className="flex shrink-0 items-center gap-[4px] border-l border-[var(--deck-border)] bg-[var(--deck-crimson-bg)] px-[8px]">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="px-chip-idle px-touch-ctrl h-[28px] cursor-pointer px-[8px] font-mono text-[10px] font-bold text-[var(--deck-text-muted)]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onDeleteCustomSkill(skill.id);
+                        setConfirmDeleteId(null);
+                      }}
+                      className="px-touch-ctrl h-[28px] cursor-pointer bg-[var(--deck-crimson)] px-[8px] font-mono text-[10px] font-bold text-white"
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(skill.id)}
+                    aria-label={`Delete custom skill ${skill.name}`}
+                    className="px-touch-ctrl cursor-pointer border-l border-[var(--deck-border)] px-[12px] font-mono text-[10px] font-bold text-[var(--deck-crimson)] hover:bg-[var(--deck-crimson-bg)]"
+                  >
+                    Delete
+                  </button>
+                ))}
             </div>
           );
         })}

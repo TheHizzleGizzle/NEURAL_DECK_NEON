@@ -15,14 +15,6 @@ export function findCardById(
   return cards.find((c) => c.id === cardId) ?? null;
 }
 
-export function getParentTitle(
-  cards: IdeaCard[],
-  card: IdeaCard
-): string | null {
-  if (!card.parentId) return null;
-  return findCardById(cards, card.parentId)?.title ?? null;
-}
-
 /**
  * Returns ordered ancestor chain from root down to (and including) the target card.
  * Cycle-safe in case of corrupted parent links.
@@ -55,14 +47,41 @@ export function getExistingChildTitles(
     .filter(Boolean);
 }
 
-export function countSubtree(cards: IdeaCard[], rootId: string): number {
-  let total = 0;
+export function buildCardMetaMaps(cards: IdeaCard[]): {
+  subtreeCounts: Map<string, number>;
+  titleById: Map<string, string>;
+} {
+  const titleById = new Map<string, string>();
+  const { childrenMap } = groupCardsByParent(cards);
+  const subtreeCounts = new Map<string, number>();
+  const visiting = new Set<string>();
+
   for (const c of cards) {
-    if (c.parentId === rootId) {
-      total += 1 + countSubtree(cards, c.id);
-    }
+    titleById.set(c.id, c.title);
   }
-  return total;
+
+  const countNode = (id: string): number => {
+    const cached = subtreeCounts.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    let total = 0;
+    const kids = childrenMap.get(id);
+    if (kids) {
+      for (const kid of kids) {
+        total += 1 + countNode(kid.id);
+      }
+    }
+    visiting.delete(id);
+    subtreeCounts.set(id, total);
+    return total;
+  };
+
+  for (const c of cards) {
+    countNode(c.id);
+  }
+
+  return { subtreeCounts, titleById };
 }
 
 export function collectSubtreeIds(
@@ -107,6 +126,27 @@ export function parseTagsInput(raw: string): string[] {
   return tags;
 }
 
+function groupCardsByParent(cards: IdeaCard[]): {
+  roots: IdeaCard[];
+  childrenMap: Map<string, IdeaCard[]>;
+} {
+  const cardIds = new Set(cards.map((c) => c.id));
+  const childrenMap = new Map<string, IdeaCard[]>();
+  const roots: IdeaCard[] = [];
+
+  for (const c of cards) {
+    if (!c.parentId || !cardIds.has(c.parentId)) {
+      roots.push(c);
+    } else {
+      const list = childrenMap.get(c.parentId) ?? [];
+      list.push(c);
+      childrenMap.set(c.parentId, list);
+    }
+  }
+
+  return { roots, childrenMap };
+}
+
 export function buildVisibleTree(
   cards: IdeaCard[],
   filterMode: FilterMode,
@@ -140,8 +180,9 @@ export function buildVisibleTree(
     return cards.filter((c) => c.starred && matchesCriteria(c));
   }
   if (filterMode === "ROOTS") {
+    const cardIds = new Set(cards.map((c) => c.id));
     return cards.filter(
-      (c) => (!c.parentId || !findCardById(cards, c.parentId)) && matchesCriteria(c)
+      (c) => (!c.parentId || !cardIds.has(c.parentId)) && matchesCriteria(c)
     );
   }
 
@@ -151,24 +192,16 @@ export function buildVisibleTree(
     return buildFullOrderedTree(cards).filter(matchesCriteria);
   }
 
-  const childrenMap = new Map<string, IdeaCard[]>();
-  const roots: IdeaCard[] = [];
-
-  for (const c of cards) {
-    if (!c.parentId || !findCardById(cards, c.parentId)) {
-      roots.push(c);
-    } else {
-      const list = childrenMap.get(c.parentId) ?? [];
-      list.push(c);
-      childrenMap.set(c.parentId, list);
-    }
-  }
-
+  const { roots, childrenMap } = groupCardsByParent(cards);
   const ordered: IdeaCard[] = [];
+  const visited = new Set<string>();
+
   const appendVisibleChildren = (parentId: string, depth: number) => {
     const kids = childrenMap.get(parentId);
     if (!kids) return;
     for (const kid of kids) {
+      if (visited.has(kid.id)) continue;
+      visited.add(kid.id);
       ordered.push({ ...kid, depth });
       if (!kid.collapsed) {
         appendVisibleChildren(kid.id, depth + 1);
@@ -177,6 +210,8 @@ export function buildVisibleTree(
   };
 
   for (const root of roots) {
+    if (visited.has(root.id)) continue;
+    visited.add(root.id);
     ordered.push({ ...root, depth: 0 });
     if (!root.collapsed) {
       appendVisibleChildren(root.id, 1);
@@ -187,30 +222,24 @@ export function buildVisibleTree(
 }
 
 export function buildFullOrderedTree(cards: IdeaCard[]): IdeaCard[] {
-  const childrenMap = new Map<string, IdeaCard[]>();
-  const roots: IdeaCard[] = [];
-
-  for (const c of cards) {
-    if (!c.parentId || !findCardById(cards, c.parentId)) {
-      roots.push(c);
-    } else {
-      const list = childrenMap.get(c.parentId) ?? [];
-      list.push(c);
-      childrenMap.set(c.parentId, list);
-    }
-  }
-
+  const { roots, childrenMap } = groupCardsByParent(cards);
   const out: IdeaCard[] = [];
+  const visited = new Set<string>();
+
   const appendAll = (parentId: string, depth: number) => {
     const kids = childrenMap.get(parentId);
     if (!kids) return;
     for (const kid of kids) {
+      if (visited.has(kid.id)) continue;
+      visited.add(kid.id);
       out.push({ ...kid, depth });
       appendAll(kid.id, depth + 1);
     }
   };
 
   for (const root of roots) {
+    if (visited.has(root.id)) continue;
+    visited.add(root.id);
     out.push({ ...root, depth: 0 });
     appendAll(root.id, 1);
   }
@@ -358,7 +387,6 @@ export function reviveGraveyardEntry(
 
 export interface QuadrantClassification {
   label: "Quick Win" | "Big Bet" | "Incremental" | "Reconsider";
-  color: string;
 }
 
 export function classifyQuadrant(
@@ -367,25 +395,46 @@ export function classifyQuadrant(
   if (!ratings) return null;
   const { impact, effort } = ratings;
   if (impact >= 4 && effort <= 2) {
-    return { label: "Quick Win", color: "#39FF88" };
+    return { label: "Quick Win" };
   }
   if (impact >= 4 && effort >= 3) {
-    return { label: "Big Bet", color: "#00F0FF" };
+    return { label: "Big Bet" };
   }
   if (impact <= 3 && effort <= 2) {
-    return { label: "Incremental", color: "#FFB800" };
+    return { label: "Incremental" };
   }
-  return { label: "Reconsider", color: "#FF3864" };
+  return { label: "Reconsider" };
+}
+
+function balanceCodeFences(text: string): string {
+  const fenceCount = (text.match(/```/g) || []).length;
+  return fenceCount % 2 === 1 ? `${text}\n\`\`\`` : text;
+}
+
+function formatBlockquote(labelPrefix: string, text: string): string {
+  const safe = balanceCodeFences(text.trim());
+  return safe
+    .split(/\r?\n/)
+    .map((line, idx) => (idx === 0 ? `> ${labelPrefix}${line}` : `> ${line}`))
+    .join("\n");
+}
+
+function formatIndentedLines(text: string, indent: string): string[] {
+  const safe = balanceCodeFences(text.trim());
+  if (!safe) return [];
+  return safe.split(/\r?\n/).map((line) => `${indent}${line}`);
 }
 
 export function sessionToMarkdown(session: BrainstormSession): string {
   const lines: string[] = [];
   lines.push(`# ${session.title}\n`);
   if (session.seedPrompt && session.seedPrompt.trim()) {
-    lines.push(`> **Seed Prompt:** ${session.seedPrompt.trim()}\n`);
+    lines.push(`${formatBlockquote("**Seed Prompt:** ", session.seedPrompt)}\n`);
   }
   if (session.sessionConstraints && session.sessionConstraints.trim()) {
-    lines.push(`> **Session Constraints:** ${session.sessionConstraints.trim()}\n`);
+    lines.push(
+      `${formatBlockquote("**Session Constraints:** ", session.sessionConstraints)}\n`
+    );
   }
 
   const fullTree = buildFullOrderedTree(session.cards);
@@ -396,9 +445,15 @@ export function sessionToMarkdown(session: BrainstormSession): string {
     const star = c.starred ? " ★" : "";
     const authorTag = c.author === "human" ? " (Human)" : "";
     lines.push(`${indent}- **[${c.skillBadge}] ${c.title}**${authorTag}${star}`);
-    lines.push(`${indent}  ${c.summary}`);
+    lines.push(...formatIndentedLines(c.summary, `${indent}  `));
     if (c.rationale && c.rationale.trim()) {
-      lines.push(`${indent}  _Why:_ ${c.rationale}`);
+      const [firstLine, ...restLines] = balanceCodeFences(
+        c.rationale.trim()
+      ).split(/\r?\n/);
+      lines.push(`${indent}  _Why:_ ${firstLine}`);
+      for (const extra of restLines) {
+        lines.push(`${indent}  ${extra}`);
+      }
     }
     if (c.splicedFrom && c.splicedFrom.length > 0) {
       lines.push(
@@ -417,9 +472,9 @@ export function sessionToMarkdown(session: BrainstormSession): string {
 
   if (session.brief) {
     lines.push(`\n## Decision Brief: ${session.brief.title}\n`);
-    lines.push(`> ${session.brief.verdict}\n`);
+    lines.push(`${formatBlockquote("", session.brief.verdict)}\n`);
     for (const sec of session.brief.sections) {
-      lines.push(`### ${sec.heading}\n${sec.body}\n`);
+      lines.push(`### ${sec.heading}\n${balanceCodeFences(sec.body.trim())}\n`);
     }
     if (session.brief.nextActions.length > 0) {
       lines.push(`### Immediate Next Actions`);
@@ -436,7 +491,9 @@ export function sessionToMarkdown(session: BrainstormSession): string {
     );
     for (const g of session.graveyard) {
       const state = g.activeInPrompts ? "Active" : "Muted";
-      lines.push(`- **[${g.reasonTag} · ${state}]** ${g.antiPatternRule}`);
+      lines.push(
+        `- **[${g.reasonTag} · ${state}]** ${balanceCodeFences(g.antiPatternRule.trim())}`
+      );
     }
   }
 

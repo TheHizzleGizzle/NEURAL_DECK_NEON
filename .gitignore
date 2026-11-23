@@ -19,3 +19,4 @@ dist/
 
 # Built APKs copied here by scripts/build-apk.ps1
 apk/
+dev-dist/

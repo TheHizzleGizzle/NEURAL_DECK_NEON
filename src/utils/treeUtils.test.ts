@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { BrainstormSession, IdeaCard } from "../types/deck";
 import {
   banishCardSubtree,
+  buildCardMetaMaps,
   buildVisibleTree,
   classifyQuadrant,
   getAncestorPath,
@@ -187,4 +188,44 @@ test("sessionToMarkdown exports splice lineage, human author, ratings, constrain
   assert.match(md, /Impact 5\/5, Effort 2\/5 \(Quick Win\)/);
   assert.match(md, /## Decision Brief: 48h Focus Wedge/);
   assert.match(md, /- Build prototype/);
+});
+
+test("buildCardMetaMaps counts multi-level subtrees and avoids cycles", () => {
+  const root = makeCard({ id: "r1", title: "Root" });
+  const c1 = makeCard({ id: "c1", parentId: "r1", depth: 1, title: "Child 1" });
+  const c2 = makeCard({ id: "c2", parentId: "r1", depth: 1, title: "Child 2" });
+  const g1 = makeCard({ id: "g1", parentId: "c1", depth: 2, title: "Grandchild" });
+
+  const meta = buildCardMetaMaps([root, c1, c2, g1]);
+  assert.equal(meta.subtreeCounts.get("r1"), 3);
+  assert.equal(meta.subtreeCounts.get("c1"), 1);
+  assert.equal(meta.subtreeCounts.get("c2"), 0);
+  assert.equal(meta.titleById.get("c1"), "Child 1");
+
+  const cycA = makeCard({ id: "a", parentId: "b", title: "A" });
+  const cycB = makeCard({ id: "b", parentId: "a", title: "B" });
+  const cycMeta = buildCardMetaMaps([cycA, cycB]);
+  assert.equal(cycMeta.titleById.get("a"), "A");
+});
+
+test("sessionToMarkdown indents multi-line fields and closes unclosed code fences", () => {
+  const card = makeCard({
+    id: "m1",
+    title: "Fenced Idea",
+    summary: "Line one\n```ts\nconst x = 1;",
+    rationale: "Reason line 1\nReason line 2",
+  });
+
+  const md = sessionToMarkdown({
+    id: "s1",
+    title: "MULTI_LINE",
+    seedPrompt: "Seed line 1\nSeed line 2",
+    updatedAt: 1000,
+    cards: [card],
+    graveyard: [],
+  });
+
+  assert.match(md, /> \*\*Seed Prompt:\*\* Seed line 1\n> Seed line 2/);
+  assert.match(md, /  Line one\n  ```ts\n  const x = 1;\n  ```/);
+  assert.match(md, /  _Why:_ Reason line 1\n  Reason line 2/);
 });

@@ -1,15 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
 import type {
   AiProvider,
   DeckTuningConfig,
-  DivergenceLevel,
   OpenRouterModelInfo,
   ProviderKeys,
-  ReasoningPreset,
   ThemeMode,
   UiPreferences,
 } from "../types/deck";
 import { usePWAInstall } from "../hooks/usePWAInstall";
+import { NativeDialog } from "./NativeDialog";
 import { PxSlidersIcon } from "./PixelIcons";
 
 interface OptionsDialogProps {
@@ -136,18 +135,6 @@ const ApiKeyField: React.FC<ApiKeyFieldProps> = ({
   );
 };
 
-const DIVERGENCE_OPTIONS: Array<{ id: DivergenceLevel; label: string }> = [
-  { id: "grounded", label: "Grounded" },
-  { id: "balanced", label: "Balanced" },
-  { id: "wild", label: "Wild" },
-];
-
-const REASONING_OPTIONS: Array<{ id: ReasoningPreset; label: string }> = [
-  { id: "fast", label: "Fast" },
-  { id: "balanced", label: "Balanced" },
-  { id: "deep", label: "Deep" },
-];
-
 export const OptionsDialog: React.FC<OptionsDialogProps> = ({
   open,
   onClose,
@@ -168,15 +155,8 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
 }) => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [modelSearch, setModelSearch] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
+  const titleId = useId();
+  const modelSelectId = useId();
 
   const filteredModels = useMemo(() => {
     const q = modelSearch.trim().toLowerCase();
@@ -188,36 +168,33 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
     );
   }, [modelSearch, openRouterModels, featuredModels]);
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Deck Options"
+    <NativeDialog
+      open={open}
+      onClose={onClose}
+      variant="modal"
+      maxWidthClass="max-w-[540px]"
+      ariaLabelledBy={titleId}
     >
-      <div
-        className="px-panel max-h-[90vh] w-full max-w-[540px] overflow-y-auto p-[18px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between gap-[8px] border-b border-[var(--deck-border)] pb-[10px]">
-          <div className="flex items-center gap-[8px]">
-            <PxSlidersIcon size={16} color="var(--deck-cyan)" />
-            <h2 className="font-mono text-[14px] font-bold tracking-[0.04em] text-[var(--deck-cyan)]">
-              Options
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-chip-idle h-[28px] cursor-pointer px-[10px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+      {/* Header */}
+      <div className="flex items-center justify-between gap-[8px] border-b border-[var(--deck-border)] pb-[10px]">
+        <div className="flex items-center gap-[8px]">
+          <PxSlidersIcon size={16} color="var(--deck-cyan)" />
+          <h2
+            id={titleId}
+            className="font-mono text-[14px] font-bold tracking-[0.04em] text-[var(--deck-cyan)]"
           >
-            Done
-          </button>
+            Options
+          </h2>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-chip-idle px-touch-ctrl h-[28px] cursor-pointer px-[10px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+        >
+          Done
+        </button>
+      </div>
 
         <div className="mt-[14px] space-y-[18px]">
           {/* AI Engine & Multi-User OAuth Model Selection */}
@@ -350,7 +327,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                 {/* Full OpenRouter Catalog Picker */}
                 <div className="space-y-[6px]">
                   <label
-                    htmlFor="openrouter-model-select"
+                    htmlFor={modelSelectId}
                     className="block font-mono text-[10px] font-bold text-[var(--deck-text-muted)]"
                   >
                     Model Catalog ({filteredModels.length} available)
@@ -364,7 +341,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
                     className="px-terminal-input h-[32px] w-full px-[10px] text-[12px]"
                   />
                   <select
-                    id="openrouter-model-select"
+                    id={modelSelectId}
                     value={tuning.openRouterModel}
                     onChange={(e) =>
                       onUpdateTuning({
@@ -512,69 +489,6 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
             </div>
           </div>
 
-          {/* AI Engine Tuning (synced with Context tab) */}
-          <div className="space-y-[10px] border-t border-[var(--deck-border)] pt-[14px]">
-            <div className="font-mono text-[11px] font-bold text-[var(--deck-text)]">
-              AI Brainstorm Tuning
-            </div>
-
-            <div>
-              <div className="mb-[5px] text-[11px] text-[var(--deck-text-muted)]">
-                Divergence Style
-              </div>
-              <div className="grid grid-cols-3 gap-[6px]">
-                {DIVERGENCE_OPTIONS.map((opt) => {
-                  const active = tuning.divergence === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() =>
-                        onUpdateTuning({ ...tuning, divergence: opt.id })
-                      }
-                      className={`h-[32px] cursor-pointer font-mono text-[11px] font-bold ${
-                        active
-                          ? "px-chip-active"
-                          : "px-chip-idle text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {tuning.provider === "gemini" && (
-              <div>
-                <div className="mb-[5px] text-[11px] text-[var(--deck-text-muted)]">
-                  Gemini Reasoning Depth
-                </div>
-                <div className="grid grid-cols-3 gap-[6px]">
-                  {REASONING_OPTIONS.map((opt) => {
-                    const active = tuning.reasoningPreset === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() =>
-                          onUpdateTuning({ ...tuning, reasoningPreset: opt.id })
-                        }
-                        className={`h-[32px] cursor-pointer font-mono text-[11px] font-bold ${
-                          active
-                            ? "px-chip-active"
-                            : "px-chip-idle text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Install as App (PWA) — not applicable inside the native app */}
           {!directProviderMode && (
           <div className="border-t border-[var(--deck-border)] pt-[14px]">
@@ -627,14 +541,13 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({
               <button
                 type="button"
                 onClick={onExportBackupJson}
-                className="px-chip-active h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold whitespace-nowrap"
+                className="px-chip-active px-touch-ctrl h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold whitespace-nowrap"
               >
                 {directProviderMode ? "Save JSON" : "Download JSON"}
               </button>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </NativeDialog>
   );
 };

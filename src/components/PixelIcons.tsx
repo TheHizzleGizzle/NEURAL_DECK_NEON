@@ -61,13 +61,6 @@ export const PxFolderIcon: React.FC<IconProps> = (props) => (
   />
 );
 
-export const PxKeyIcon: React.FC<IconProps> = (props) => (
-  <PixelSvg
-    {...props}
-    d="M2,5H8V7H15V9H13V11H11V9H8V11H2V5ZM4,7V9H6V7H4Z"
-  />
-);
-
 export const PxSkullIcon: React.FC<IconProps> = (props) => (
   <PixelSvg
     {...props}

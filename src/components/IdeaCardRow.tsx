@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import type { CreativeSkill, IdeaCard } from "../types/deck";
 import { PixelBranchConnector } from "./PixelBranchConnector";
 import {
@@ -41,7 +41,7 @@ interface IdeaCardRowProps {
   onBanishCard: (card: IdeaCard) => void;
 }
 
-export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
+export const IdeaCardRow: React.FC<IdeaCardRowProps> = React.memo(({
   card,
   subtreeCount,
   parentTitle,
@@ -64,6 +64,12 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
   onCopyCard,
   onBanishCard,
 }) => {
+  const editTitleId = useId();
+  const editSummaryId = useId();
+  const editRationaleId = useId();
+  const editTagsId = useId();
+  const steerInputId = useId();
+
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(card.title);
   const [editSummary, setEditSummary] = useState(card.summary);
@@ -127,7 +133,7 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
 
   return (
     <article
-      className={`${compact ? "mb-[7px]" : "mb-[10px]"} flex w-full items-stretch`}
+      className={`${compact ? "mb-[6px]" : "mb-[8px]"} flex w-full items-stretch`}
       data-testid="idea-card"
     >
       {/* Stepped 90-degree neon pixel circuit connector (only in tree view) */}
@@ -141,7 +147,7 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
       {/* Pixel Cartridge Container */}
       <div
         className={`flex min-w-0 flex-1 flex-col ${
-          compact ? "px-[12px] py-[9px]" : "px-[14px] pt-[12px] pb-[12px]"
+          compact ? "px-[10px] py-[7px]" : "px-[12px] py-[9px]"
         } ${cartridgeClass}`}
       >
         {/* Top Metadata Row */}
@@ -248,10 +254,14 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
         {editing ? (
           <form onSubmit={handleSaveEdit} className="mt-[10px] space-y-[8px]">
             <div>
-              <label className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]">
+              <label
+                htmlFor={editTitleId}
+                className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+              >
                 Title
               </label>
               <input
+                id={editTitleId}
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
@@ -261,10 +271,14 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
             </div>
 
             <div>
-              <label className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]">
+              <label
+                htmlFor={editSummaryId}
+                className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+              >
                 Summary
               </label>
               <textarea
+                id={editSummaryId}
                 value={editSummary}
                 onChange={(e) => setEditSummary(e.target.value)}
                 rows={3}
@@ -273,10 +287,14 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
             </div>
 
             <div>
-              <label className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]">
+              <label
+                htmlFor={editRationaleId}
+                className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+              >
                 Rationale (optional)
               </label>
               <input
+                id={editRationaleId}
                 type="text"
                 value={editRationale}
                 onChange={(e) => setEditRationale(e.target.value)}
@@ -285,10 +303,14 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
             </div>
 
             <div>
-              <label className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]">
+              <label
+                htmlFor={editTagsId}
+                className="mb-[3px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+              >
                 Tags (comma-separated)
               </label>
               <input
+                id={editTagsId}
                 type="text"
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
@@ -382,11 +404,11 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
         {steeringOpen && !editing && (
           <form
             onSubmit={handleRunSteer}
-            className="mt-[10px] border border-[var(--deck-border)] bg-[var(--deck-panel-alt)] p-[10px]"
+            className="mt-[8px] border border-[var(--deck-border)] bg-[var(--deck-panel-alt)] p-[10px]"
           >
             <div className="flex flex-wrap items-center gap-[6px]">
               <label
-                htmlFor={`steer-input-${card.id}`}
+                htmlFor={steerInputId}
                 className="font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
               >
                 Steer next branch
@@ -407,7 +429,7 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
             </div>
             <div className="mt-[6px] flex flex-wrap gap-[6px]">
               <input
-                id={`steer-input-${card.id}`}
+                id={steerInputId}
                 type="text"
                 value={steerNote}
                 onChange={(e) => setSteerNote(e.target.value)}
@@ -418,14 +440,14 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
               <button
                 type="submit"
                 disabled={isBusy}
-                className="px-btn-cyan h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold disabled:opacity-50"
+                className="px-btn-cyan px-touch-ctrl h-[32px] shrink-0 cursor-pointer px-[12px] font-mono text-[11px] font-bold disabled:opacity-50"
               >
                 Run Branch
               </button>
               <button
                 type="button"
                 onClick={() => setSteeringOpen(false)}
-                className="px-chip-idle h-[32px] shrink-0 cursor-pointer px-[8px] font-mono text-[10px] font-bold text-[var(--deck-text-muted)]"
+                className="px-chip-idle px-touch-ctrl h-[32px] shrink-0 cursor-pointer px-[8px] font-mono text-[10px] font-bold text-[var(--deck-text-muted)]"
               >
                 Close
               </button>
@@ -438,18 +460,18 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
           <>
             <div
               className={`${
-                compact ? "mt-[8px] mb-[6px]" : "mt-[10px] mb-[8px]"
+                compact ? "mt-[6px] mb-[5px]" : "mt-[8px] mb-[6px]"
               } h-[1px] w-full bg-[var(--deck-border)]`}
             />
 
             {/* Cartridge Action Bar */}
-            <div className="flex flex-wrap items-center gap-[6px]">
-              {/* Quick Branch with Active Skill */}
+            <div className="flex flex-wrap items-center gap-[5px]">
+              {/* Primary CTA: Quick Branch with Active Skill */}
               <button
                 type="button"
                 disabled={isBusy}
                 onClick={() => onQuickBranch(card)}
-                className="px-chip-active flex h-[30px] cursor-pointer items-center gap-[5px] px-[9px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110 disabled:opacity-50"
+                className="px-chip-active px-touch-ctrl flex h-[28px] cursor-pointer items-center gap-[5px] px-[9px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110 disabled:opacity-50"
               >
                 <PxBranchIcon size={12} color="var(--deck-cyan)" />
                 <span>{quickSkillLabel}</span>
@@ -463,7 +485,7 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
                   setSteeringOpen((prev) => !prev);
                 }}
                 aria-expanded={steeringOpen}
-                className={`flex h-[30px] cursor-pointer items-center px-[8px] font-mono text-[10px] font-bold whitespace-nowrap hover:brightness-110 ${
+                className={`px-touch-ctrl flex h-[28px] cursor-pointer items-center px-[8px] font-mono text-[10px] font-bold whitespace-nowrap hover:brightness-110 ${
                   steeringOpen
                     ? "px-btn-magenta"
                     : "px-chip-idle text-[var(--deck-text)]"
@@ -477,7 +499,7 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
                 type="button"
                 disabled={isBusy}
                 onClick={() => onPickSkillBranch(card)}
-                className="px-chip-idle flex h-[30px] cursor-pointer items-center px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-magenta)] hover:brightness-110 disabled:opacity-50"
+                className="px-chip-idle px-touch-ctrl flex h-[28px] cursor-pointer items-center px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-magenta)] hover:brightness-110 disabled:opacity-50"
               >
                 Skills ▾
               </button>
@@ -486,7 +508,7 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
               <button
                 type="button"
                 onClick={() => onAddManualChild(card)}
-                className="px-chip-idle flex h-[30px] cursor-pointer items-center gap-[4px] px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-green)] hover:brightness-110"
+                className="px-chip-idle px-touch-ctrl flex h-[28px] cursor-pointer items-center gap-[4px] px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-green)] hover:brightness-110"
                 aria-label={`Add manual child idea under ${card.title}`}
               >
                 <PxPlusIcon size={10} color="var(--deck-green)" />
@@ -495,33 +517,31 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
 
               <div className="flex-1" />
 
-              {/* Edit Card Inline */}
+              {/* Quiet Utility Actions */}
               <button
                 type="button"
                 onClick={openEditor}
                 aria-label={`Edit ${card.title}`}
-                className="px-chip-idle flex h-[30px] cursor-pointer items-center gap-[4px] px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+                className="px-btn-ghost px-touch-ctrl flex h-[28px] cursor-pointer items-center gap-[4px] px-[7px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
               >
-                <PxEditIcon size={11} color="var(--deck-text-muted)" />
+                <PxEditIcon size={11} color="currentColor" />
                 <span>Edit</span>
               </button>
 
-              {/* Copy Node */}
               <button
                 type="button"
                 onClick={() => onCopyCard(card)}
                 aria-label={`Copy ${card.title}`}
-                className="px-chip-idle flex h-[30px] cursor-pointer items-center px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+                className="px-btn-ghost px-touch-ctrl flex h-[28px] cursor-pointer items-center px-[7px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
               >
                 Copy
               </button>
 
-              {/* Banish to Anti-Pattern Graveyard */}
               <button
                 type="button"
                 onClick={() => onBanishCard(card)}
                 aria-label={`Banish ${card.title}`}
-                className="px-grave-badge flex h-[30px] cursor-pointer items-center gap-[4px] px-[8px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-crimson)] hover:brightness-110"
+                className="px-btn-ghost px-touch-ctrl flex h-[28px] cursor-pointer items-center gap-[4px] px-[7px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-crimson)] hover:border-[var(--deck-crimson)] hover:bg-[var(--deck-crimson-bg)]"
               >
                 <PxSkullIcon size={11} color="var(--deck-crimson)" />
                 <span>Banish</span>
@@ -532,4 +552,4 @@ export const IdeaCardRow: React.FC<IdeaCardRowProps> = ({
       </div>
     </article>
   );
-};
+});

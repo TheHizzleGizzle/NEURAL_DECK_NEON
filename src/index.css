@@ -2,6 +2,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  color-scheme: light;
   /* Light Mode: Daylight Technical Blueprint */
   --deck-void: #eef2f8;
   --deck-panel: #f8fafd;
@@ -12,20 +13,23 @@
   --deck-cartridge-human: #effbf5;
   --deck-subcard: #f1f5fb;
   --deck-grave-card: #fff5f7;
-  --deck-grave-border: #f2b8c6;
+  --deck-grave-border: #e598ac;
   --deck-input: #ffffff;
-  --deck-border: #c2d0e3;
-  --deck-border-strong: #879bb8;
+  --deck-border: #a3b5cd;
+  --deck-border-strong: #6d83a3;
   --deck-shadow: rgba(15, 23, 42, 0.14);
+  --deck-grid-line: rgba(3, 105, 161, 0.08);
+  --deck-grid-dot: rgba(3, 105, 161, 0.22);
+  --deck-scanline: transparent;
 
   --deck-text: #0f172a;
   --deck-text-body: #1e293b;
   --deck-text-muted: #475569;
-  --deck-text-faint: #64748b;
+  --deck-text-faint: #4b5c74;
 
   --deck-cyan: #0369a1;
-  --deck-cyan-btn-bg: #0284c7;
-  --deck-cyan-btn-border: #0369a1;
+  --deck-cyan-btn-bg: #0369a1;
+  --deck-cyan-btn-border: #075985;
   --deck-cyan-btn-text: #ffffff;
   --deck-cyan-soft: rgba(2, 132, 199, 0.09);
 
@@ -45,13 +49,14 @@
   --deck-amber-bg: rgba(180, 83, 9, 0.1);
 
   --deck-chip-active-bg: #e0f2fe;
-  --deck-chip-idle-bg: #f1f5f9;
+  --deck-chip-idle-bg: #eef3f9;
   --deck-tab-shortlist-bg: #e0f2fe;
   --deck-tab-grave-bg: #ffe4e8;
   --deck-tab-tuning-bg: #dcfce7;
 }
 
 .dark {
+  color-scheme: dark;
   /* Dark Mode: Midnight Cyber-Deck (Default) */
   --deck-void: #080a12;
   --deck-panel: #0f1424;
@@ -67,6 +72,9 @@
   --deck-border: #273659;
   --deck-border-strong: #3b5284;
   --deck-shadow: #030408;
+  --deck-grid-line: rgba(0, 240, 255, 0.08);
+  --deck-grid-dot: rgba(0, 240, 255, 0.19);
+  --deck-scanline: rgba(0, 0, 0, 0.095);
 
   --deck-text: #ecf6ff;
   --deck-text-body: #d8e7f8;
@@ -200,6 +208,27 @@
   border: 1px solid var(--deck-border-strong);
 }
 
+.px-grid-bg {
+  background-color: var(--deck-void);
+  background-image:
+    repeating-linear-gradient(to bottom, var(--deck-scanline) 0 1px, transparent 1px 4px),
+    radial-gradient(circle, var(--deck-grid-dot) 1.1px, transparent 1.2px),
+    linear-gradient(to right, var(--deck-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--deck-grid-line) 1px, transparent 1px);
+  background-size: 100% 4px, 22px 22px, 22px 22px, 22px 22px;
+  background-position: 0 0, 11px 11px, 11px 11px, 11px 11px;
+}
+
+.px-btn-ghost {
+  background-color: transparent;
+  border: 1px solid transparent;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.px-btn-ghost:hover {
+  background-color: var(--deck-panel-alt);
+  border-color: var(--deck-border);
+}
+
 .px-grave-badge {
   background-color: var(--deck-crimson-bg);
   border: 1px solid var(--deck-crimson);
@@ -218,19 +247,67 @@
   border-color: var(--deck-cyan);
 }
 
-/* Subtle theme-aware scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Native <dialog> modal & bottom-sheet top-layer styling */
+@layer components {
+  dialog.px-dialog-modal,
+  dialog.px-dialog-sheet {
+    padding: 18px;
+    color: var(--deck-text);
+  }
+
+  dialog.px-dialog-modal[open] {
+    margin: auto;
+    width: calc(100vw - 24px);
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  dialog.px-dialog-sheet[open] {
+    margin: auto auto 0 auto;
+    width: 100%;
+    max-width: min(680px, 100vw);
+    max-height: 88dvh;
+    overflow-y: auto;
+    padding: 16px;
+  }
 }
-::-webkit-scrollbar-track {
-  background: var(--deck-panel-alt);
+
+dialog:modal {
+  overscroll-behavior: contain;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--deck-border);
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--deck-border-strong);
+
+/* Subtle theme-aware scrollbars (standard first, WebKit fallback) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--deck-border-strong) var(--deck-panel-alt);
+}
+
+@supports not (scrollbar-color: auto) {
+  * {
+    scrollbar-width: auto;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--deck-panel-alt);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--deck-border-strong);
+  }
+}
+
+@media (pointer: coarse) {
+  .px-touch-ctrl {
+    min-block-size: 38px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -4,13 +4,14 @@ Pixel-art cyber-deck web application for AI-assisted brainstorming, rewritten in
 
 ## Features
 
-- **Branching Idea Tree**: Spark root concept cartridges from a seed prompt, branch any card into child nodes with 90-degree neon circuit rails, collapse/expand subtrees, star favorites, and filter by `[ALL]`, `[★ STARRED]`, or `[ROOTS]`.
-- **Creative Skills Deck**: Arm the deck or branch specific cards using 8 built-in thinking cartridges (`10X_DIVERGE`, `SCAMPER`, `1ST_PRINC`, `PRE_MORTEM`, `INVERT`, `ANALOGY`, `6_HATS`, `48H_MVP`) or forge/delete custom skills.
-- **Multi-Select Splice / Mashup**: Arm 2 or more cards with `[+SPLICE]` and fuse them into emergent hybrid concepts.
-- **Anti-Pattern Idea Graveyard**: Banish cards with reason tags (`TOO_CLICHE`, `OUT_OF_SCOPE`, `WRONG_VIBE`, `DEAD_END`) or custom rules to inject negative memory into future AI prompts; toggle rules (`MUTE_RULE` / `ENABLE_RULE`), revive nodes, or purge entries.
-- **Prompt Optimizer Lab**: Upgrade rough seeds via `CO-STAR`, `10X_DIVERGENT`, `SOCRATIC`, or `CONSTRAINT_BOX` using the live AI link (with built-in local heuristic fallback).
-- **Neural Link Server Proxy**: Routes AI requests server-side through Express (`/api/ai/chat`) with built-in Gemini support (`@google/genai`) and optional OpenAI-compatible provider presets (`OPENROUTER`, `OPENAI`, `GROQ`, `DEEPSEEK`, `CUSTOM_URL`), divergence temperature control, global persona/constraints, and endpoint ping diagnostics.
-- **Sessions & Markdown Export**: Create, switch, rename, and delete brainstorming sessions persisted in `localStorage`, and export/copy/download any session tree as Markdown.
+- **Branching Idea Tree**: Spark root concept cartridges from a seed prompt, branch any card into child nodes with 90-degree neon circuit rails (or add your own manual root/child cards), collapse/expand subtrees, edit cards inline, star finalists, and filter by `All`, `★ Starred`, `Roots`, live search, or clickable `#TAG` pills.
+- **Creative Skills Deck**: Arm the deck or branch specific cards using 8 built-in thinking cartridges (`10X_DIVERGE`, `SCAMPER`, `1ST_PRINC`, `PRE_MORTEM`, `INVERT`, `ANALOGY`, `6_HATS`, `48H_MVP`) or forge/delete custom skills, with optional per-branch steering notes.
+- **Multi-Select Splice / Mashup**: Arm 2 or more cards with `+ Splice` and fuse them into emergent hybrid concepts with tracked parent lineage.
+- **Convergence Shortlist & Decision Briefs**: Rate starred finalists on Impact and Effort (auto-classified into `Quick Win`, `Big Bet`, `Incremental`, or `Reconsider`) and synthesize a `48h MVP`, `1-Page Spec`, or `Tradeoffs` decision brief.
+- **Anti-Pattern Idea Graveyard**: Banish cards (and their subtrees) with reason tags (`TOO_CLICHE`, `OUT_OF_SCOPE`, `WRONG_VIBE`, `DEAD_END`) or custom rules to inject negative memory into future AI prompts; toggle rules (`Mute Rule` / `Enable Rule`), revive branches, or purge entries.
+- **1-Click Inline Seed Sharpener**: Tighten rough seed ideas into crisp creative briefs with single-click `Revert` back to the prior draft.
+- **Built-in Gemini & OpenRouter Integration**: Web builds proxy requests server-side through Express (`/api/ai/chat`) with built-in Gemini support (`@google/genai`) and OpenRouter OAuth PKCE (`Fast` / `Balanced` / `Deep` reasoning presets, `Grounded` / `Balanced` / `Wild` divergence styles, and session/global context constraints).
+- **Dark/Light Themes, Offline PWA & Exports**: Switch between Dark and Light modes, work offline with local `localStorage` persistence, switch/rename/delete sessions, and export Markdown trees or JSON backups.
 
 ## Development
 

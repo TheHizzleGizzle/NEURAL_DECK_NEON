@@ -1,16 +1,31 @@
 import crypto from "node:crypto";
+import http from "node:http";
 import express from "express";
 import type { Request, Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import {
+  buildOpenRouterCatalog,
+  FEATURED_OPENROUTER_MODELS,
+  OPENROUTER_MODEL_ID_RE,
+} from "./src/ai/openRouterCatalog.ts";
+import type { OpenRouterModelInfo } from "./src/types/deck.ts";
+
+try {
+  process.loadEnvFile?.();
+} catch {
+  // .env file is optional
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = "0.0.0.0";
-const IS_PROD = process.env.NODE_ENV === "production";
+const IS_PROD =
+  process.env.NODE_ENV === "production" || process.argv.includes("--prod");
+const REQUEST_TIMEOUT_MS = 150_000;
 
 type ReasoningPreset = "fast" | "balanced" | "deep";
 type AiProvider = "gemini" | "openrouter";
@@ -24,22 +39,6 @@ interface ChatRequestBody {
   expectJson?: boolean;
 }
 
-export interface OpenRouterModelInfo {
-  id: string;
-  name: string;
-  contextLength?: number;
-}
-
-const FEATURED_OPENROUTER_MODELS: OpenRouterModelInfo[] = [
-  { id: "anthropic/claude-sonnet-4", name: "Anthropic · Claude Sonnet 4" },
-  { id: "openai/gpt-4.1", name: "OpenAI · GPT-4.1" },
-  { id: "openai/o4-mini", name: "OpenAI · o4-mini" },
-  { id: "google/gemini-2.5-flash", name: "Google · Gemini 2.5 Flash" },
-  { id: "deepseek/deepseek-r1", name: "DeepSeek · R1" },
-  { id: "meta-llama/llama-4-maverick", name: "Meta · Llama 4 Maverick" },
-];
-
-const MODEL_ID_RE = /^[a-zA-Z0-9._:/-]{2,120}$/;
 const SESSION_TOKEN_RE = /^[a-f0-9]{64}$/;
 const PKCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -83,10 +82,14 @@ function pruneMaps(): void {
   }
 }
 
-function getAppBaseUrl(): string {
+function getAppBaseUrl(req?: Request): string {
   const envUrl = process.env.APP_URL?.trim();
   if (envUrl && /^https?:\/\//i.test(envUrl)) {
     return envUrl.replace(/\/+$/, "");
+  }
+  const host = req?.get("host");
+  if (host) {
+    return `${req?.protocol || "http"}://${host}`;
   }
   return `http://localhost:${PORT}`;
 }
@@ -196,7 +199,7 @@ async function runGeminiCompletion(
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
-      "Missing GEMINI_API_KEY on server. Check Settings > Secrets to configure your Gemini API key."
+      "Missing GEMINI_API_KEY on server. Set GEMINI_API_KEY in your .env file or hosting environment secrets."
     );
   }
 
@@ -205,6 +208,7 @@ async function runGeminiCompletion(
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
+      timeout: REQUEST_TIMEOUT_MS,
       headers: {
         "User-Agent": "aistudio-build",
       },
@@ -257,7 +261,8 @@ async function runOpenRouterCompletion(
   model: string,
   systemPrompt: string,
   userPrompt: string,
-  expectJson: boolean
+  expectJson: boolean,
+  refererUrl: string
 ): Promise<string> {
   const messages: Array<{ role: "system" | "user"; content: string }> = [];
   if (systemPrompt.trim()) {
@@ -274,16 +279,31 @@ async function runOpenRouterCompletion(
       payload.response_format = { type: "json_object" };
     }
 
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${userApiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": getAppBaseUrl(),
-        "X-Title": "NEURAL//DECK",
-      },
-      body: JSON.stringify(payload),
-    });
+    let resp: globalThis.Response;
+    try {
+      resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: {
+          Authorization: `Bearer ${userApiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": refererUrl,
+          "X-Title": "NEURAL//DECK",
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      if (
+        err instanceof DOMException &&
+        (err.name === "TimeoutError" || err.name === "AbortError")
+      ) {
+        throw new Error(
+          `OpenRouter (${model}): Request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s.`,
+          { cause: err }
+        );
+      }
+      throw err;
+    }
 
     const text = await resp.text();
     let data: {
@@ -330,52 +350,16 @@ async function fetchOpenRouterModels(): Promise<OpenRouterModelInfo[]> {
   }
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
     const resp = await fetch("https://openrouter.ai/api/v1/models", {
-      signal: controller.signal,
+      signal: AbortSignal.timeout(5000),
       headers: { Accept: "application/json" },
     });
-    clearTimeout(timer);
 
     if (!resp.ok) {
       return FEATURED_OPENROUTER_MODELS;
     }
 
-    const json = (await resp.json()) as {
-      data?: Array<{
-        id?: string;
-        name?: string;
-        context_length?: number;
-      }>;
-    };
-
-    const featuredIds = new Set(FEATURED_OPENROUTER_MODELS.map((m) => m.id));
-    const catalog: OpenRouterModelInfo[] = [...FEATURED_OPENROUTER_MODELS];
-
-    if (Array.isArray(json.data)) {
-      for (const item of json.data) {
-        if (
-          typeof item?.id === "string" &&
-          MODEL_ID_RE.test(item.id) &&
-          !featuredIds.has(item.id)
-        ) {
-          catalog.push({
-            id: item.id,
-            name:
-              typeof item.name === "string" && item.name.trim()
-                ? item.name.trim()
-                : item.id,
-            contextLength:
-              typeof item.context_length === "number"
-                ? item.context_length
-                : undefined,
-          });
-        }
-        if (catalog.length >= 160) break;
-      }
-    }
-
+    const catalog = buildOpenRouterCatalog(await resp.json());
     cachedModelCatalog = { models: catalog, fetchedAt: Date.now() };
     return catalog;
   } catch {
@@ -385,7 +369,8 @@ async function fetchOpenRouterModels(): Promise<OpenRouterModelInfo[]> {
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: "2mb" }));
+  const httpServer = http.createServer(app);
+  app.use(express.json({ limit: "128kb" }));
 
   app.get("/api/ai/status", (_req: Request, res: Response) => {
     res.json({
@@ -404,7 +389,7 @@ async function startServer() {
 
   /* --- OpenRouter OAuth PKCE Flow --- */
 
-  app.get("/api/auth/openrouter/url", (_req: Request, res: Response) => {
+  app.get("/api/auth/openrouter/url", (req: Request, res: Response) => {
     pruneMaps();
     const state = crypto.randomBytes(24).toString("hex");
     const verifier = generateCodeVerifier();
@@ -412,7 +397,7 @@ async function startServer() {
 
     pendingPkceStates.set(state, { verifier, createdAt: Date.now() });
 
-    const baseUrl = getAppBaseUrl();
+    const baseUrl = getAppBaseUrl(req);
     const callbackBaseUrl = `${baseUrl}/auth/openrouter/callback`;
     const callbackUrl = `${callbackBaseUrl}?state=${encodeURIComponent(state)}`;
 
@@ -587,7 +572,7 @@ async function startServer() {
         }
         const model =
           typeof body.openRouterModel === "string" &&
-          MODEL_ID_RE.test(body.openRouterModel.trim())
+          OPENROUTER_MODEL_ID_RE.test(body.openRouterModel.trim())
             ? body.openRouterModel.trim()
             : FEATURED_OPENROUTER_MODELS[0].id;
 
@@ -596,7 +581,8 @@ async function startServer() {
           model,
           systemPrompt,
           userPrompt,
-          expectJson
+          expectJson,
+          getAppBaseUrl(req)
         );
         res.json({ content });
         return;
@@ -624,8 +610,7 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: false,
-        ws: false,
+        hmr: { server: httpServer },
       },
       appType: "spa",
     });
@@ -638,7 +623,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  httpServer.listen(PORT, HOST, () => {
     console.log(`NEURAL//DECK server running at http://${HOST}:${PORT}`);
   });
 }

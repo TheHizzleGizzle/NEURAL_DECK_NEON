@@ -9,7 +9,7 @@ import type {
   SynthesizedBrief,
 } from "../types/deck";
 import { generateId } from "../data/starterSession";
-import { classifyQuadrant } from "../utils/treeUtils";
+import { classifyQuadrant, normalizeTag } from "../utils/treeUtils";
 import { loadProviderKeys } from "../utils/storage";
 import { IS_NATIVE } from "../platform/native";
 import { fetchOpenRouterCatalogDirect, runDirectChat } from "./directProviders";
@@ -169,11 +169,7 @@ function parseIdeaCards(
         if (Array.isArray(item.tags)) {
           for (const t of item.tags) {
             if (typeof t === "string") {
-              const norm = t
-                .trim()
-                .replace(/^#+/, "")
-                .toUpperCase()
-                .replace(/\s+/g, "_");
+              const norm = normalizeTag(t);
               if (norm) tags.push(norm);
             }
           }
@@ -265,20 +261,6 @@ async function callServerChat(params: {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   return data.content || "";
-}
-
-export async function fetchGeminiStatus(): Promise<boolean> {
-  if (DIRECT_PROVIDER_MODE) {
-    return Boolean(loadProviderKeys().geminiApiKey);
-  }
-  try {
-    const res = await fetch("/api/ai/status");
-    if (!res.ok) return false;
-    const data = (await res.json()) as { geminiReady?: boolean };
-    return Boolean(data.geminiReady);
-  } catch {
-    return false;
-  }
 }
 
 export async function fetchOpenRouterAuthUrl(): Promise<{
@@ -486,6 +468,41 @@ export async function mashupCards(
   );
 }
 
+export function parseSharpenedSeed(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Model returned an empty response while sharpening the seed.");
+  }
+  const slice = extractJsonBlock(trimmed);
+  try {
+    const parsed = JSON.parse(slice) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>;
+      for (const key of ["sharpened", "prompt", "seed"]) {
+        const val = obj[key];
+        if (typeof val === "string" && val.trim()) {
+          return val.trim();
+        }
+      }
+      throw new Error("Model returned an unexpected JSON shape while sharpening the seed.");
+    }
+    if (typeof parsed === "string" && parsed.trim()) {
+      return parsed.trim();
+    }
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes("unexpected JSON shape")
+    ) {
+      throw err;
+    }
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      throw new Error("Model returned an unexpected JSON shape while sharpening the seed.");
+    }
+  }
+  return trimmed;
+}
+
 /**
  * 1-click inline seed sharpener replacing the old Prompt Lab modal.
  */
@@ -518,15 +535,7 @@ export async function sharpenSeedPrompt(
     expectJson: true,
   });
 
-  try {
-    const parsed = JSON.parse(extractJsonBlock(raw)) as { sharpened?: string };
-    if (typeof parsed.sharpened === "string" && parsed.sharpened.trim()) {
-      return parsed.sharpened.trim();
-    }
-  } catch {
-    // Fallback to raw trimmed text
-  }
-  return raw.trim();
+  return parseSharpenedSeed(raw);
 }
 
 function getBriefFormatDirective(format: BriefFormat): string {
@@ -546,6 +555,66 @@ function getBriefFormatDirective(format: BriefFormat): string {
     "Produce a concise 1-Page Product Decision Spec synthesizing the starred finalists into one coherent direction. Sections should cover: " +
     "(1) Problem & Positioning, (2) Core Product Mechanics, (3) Anti-Patterns We Reject, and (4) First-Week Launch Scope."
   );
+}
+
+export function parseConvergenceBrief(
+  raw: string,
+  format: BriefFormat,
+  starredCards: IdeaCard[]
+): SynthesizedBrief {
+  let obj: Record<string, unknown> | null = null;
+  try {
+    const parsed = JSON.parse(extractJsonBlock(raw)) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      obj = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Fall back to prose Summary below
+  }
+
+  const sections =
+    obj && Array.isArray(obj.sections)
+      ? obj.sections
+          .filter(
+            (s): s is { heading: string; body: string } =>
+              Boolean(s) &&
+              typeof s === "object" &&
+              typeof (s as { heading?: unknown }).heading === "string" &&
+              typeof (s as { body?: unknown }).body === "string"
+          )
+          .map((s) => ({
+            heading: s.heading.trim(),
+            body: s.body.trim(),
+          }))
+      : [];
+
+  const nextActions =
+    obj && Array.isArray(obj.nextActions)
+      ? obj.nextActions
+          .filter((a): a is string => typeof a === "string" && a.trim().length > 0)
+          .map((a) => a.trim())
+      : [];
+
+  const fallbackBody = raw.trim() || "No response returned from model.";
+
+  return {
+    format,
+    title:
+      obj && typeof obj.title === "string" && obj.title.trim()
+        ? obj.title.trim()
+        : "Synthesized Decision Brief",
+    verdict:
+      obj && typeof obj.verdict === "string" && obj.verdict.trim()
+        ? obj.verdict.trim()
+        : "Consolidated recommendation from starred nodes.",
+    sections:
+      sections.length > 0
+        ? sections
+        : [{ heading: "Summary", body: fallbackBody }],
+    nextActions,
+    sourceCardTitles: starredCards.map((c) => c.title),
+    generatedAt: Date.now(),
+  };
 }
 
 export async function synthesizeConvergenceBrief(
@@ -600,44 +669,5 @@ export async function synthesizeConvergenceBrief(
     expectJson: true,
   });
 
-  const parsed = JSON.parse(extractJsonBlock(raw)) as {
-    title?: string;
-    verdict?: string;
-    sections?: Array<{ heading?: string; body?: string }>;
-    nextActions?: string[];
-  };
-
-  const sections = Array.isArray(parsed.sections)
-    ? parsed.sections
-        .filter((s) => s && typeof s.heading === "string" && typeof s.body === "string")
-        .map((s) => ({
-          heading: s.heading!.trim(),
-          body: s.body!.trim(),
-        }))
-    : [];
-
-  const nextActions = Array.isArray(parsed.nextActions)
-    ? parsed.nextActions
-        .filter((a): a is string => typeof a === "string" && a.trim().length > 0)
-        .map((a) => a.trim())
-    : [];
-
-  return {
-    format,
-    title:
-      typeof parsed.title === "string" && parsed.title.trim()
-        ? parsed.title.trim()
-        : "Synthesized Decision Brief",
-    verdict:
-      typeof parsed.verdict === "string" && parsed.verdict.trim()
-        ? parsed.verdict.trim()
-        : "Consolidated recommendation from starred nodes.",
-    sections:
-      sections.length > 0
-        ? sections
-        : [{ heading: "Summary", body: raw.trim() }],
-    nextActions,
-    sourceCardTitles: starredCards.map((c) => c.title),
-    generatedAt: Date.now(),
-  };
+  return parseConvergenceBrief(raw, format, starredCards);
 }

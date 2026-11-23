@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import type { BrainstormSession, IdeaCard } from "../types/deck";
 import { parseTagsInput } from "../utils/treeUtils";
 import { IS_NATIVE } from "../platform/native";
+import { NativeDialog } from "./NativeDialog";
 
 interface DialogShellProps {
   open: boolean;
@@ -16,35 +17,34 @@ const DialogShell: React.FC<DialogShellProps> = ({
   onClose,
   children,
 }) => {
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  const titleId = useId();
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <NativeDialog
+      open={open}
+      onClose={onClose}
+      variant="modal"
+      maxWidthClass="max-w-[460px]"
+      ariaLabelledBy={titleId}
     >
-      <div
-        className="px-panel w-full max-w-[460px] p-[18px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="font-mono text-[13px] font-bold tracking-[0.05em] text-[var(--deck-cyan)]">
+      <div className="flex items-center justify-between gap-[8px] border-b border-[var(--deck-border)] pb-[8px]">
+        <h2
+          id={titleId}
+          className="font-mono text-[13px] font-bold tracking-[0.05em] text-[var(--deck-cyan)]"
+        >
           {title}
-        </h3>
-        <div className="mt-[12px]">{children}</div>
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={`Close ${title}`}
+          className="px-chip-idle px-touch-ctrl flex h-[28px] min-w-[28px] cursor-pointer items-center justify-center px-[8px] font-mono text-[12px] font-bold text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+        >
+          ×
+        </button>
       </div>
-    </div>
+      <div className="mt-[12px]">{children}</div>
+    </NativeDialog>
   );
 };
 
@@ -195,40 +195,40 @@ export const TextPromptDialog: React.FC<TextPromptDialogProps> = ({
     if (open) setVal(initialValue);
   }, [open, initialValue]);
 
-  const submit = () => {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     onConfirm(val);
     onClose();
   };
 
   return (
     <DialogShell open={open} title={title} onClose={onClose}>
-      <input
-        type="text"
-        autoFocus
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") submit();
-        }}
-        placeholder={placeholder}
-        className="px-terminal-input w-full p-[10px] font-mono text-[12px]"
-      />
-      <div className="mt-[14px] flex justify-end gap-[8px]">
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-chip-idle h-[34px] cursor-pointer px-[12px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)]"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={submit}
-          className="px-btn-cyan h-[34px] cursor-pointer px-[14px] font-mono text-[11px] font-bold"
-        >
-          {confirmLabel}
-        </button>
-      </div>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          autoFocus
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          aria-label={title}
+          placeholder={placeholder}
+          className="px-terminal-input w-full p-[10px] font-mono text-[12px]"
+        />
+        <div className="mt-[14px] flex justify-end gap-[8px]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-chip-idle px-touch-ctrl h-[34px] cursor-pointer px-[12px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-btn-cyan px-touch-ctrl h-[34px] cursor-pointer px-[14px] font-mono text-[11px] font-bold"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </form>
     </DialogShell>
   );
 };
@@ -421,6 +421,7 @@ export const BanishDialog: React.FC<BanishDialogProps> = ({
   onBanish,
 }) => {
   const [customNote, setCustomNote] = useState("");
+  const customRuleId = useId();
 
   useEffect(() => {
     if (card) setCustomNote("");
@@ -452,7 +453,14 @@ export const BanishDialog: React.FC<BanishDialogProps> = ({
             </div>
           )}
 
+          <label
+            htmlFor={customRuleId}
+            className="mb-[4px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+          >
+            Anti-Pattern Rule (optional)
+          </label>
           <textarea
+            id={customRuleId}
             value={customNote}
             onChange={(e) => setCustomNote(e.target.value)}
             rows={2}
@@ -512,6 +520,9 @@ export const ForgeSkillDialog: React.FC<ForgeSkillDialogProps> = ({
   const [name, setName] = useState("");
   const [badge, setBadge] = useState("");
   const [instruction, setInstruction] = useState("");
+  const nameId = useId();
+  const badgeId = useId();
+  const instructionId = useId();
 
   useEffect(() => {
     if (open) {
@@ -521,7 +532,8 @@ export const ForgeSkillDialog: React.FC<ForgeSkillDialogProps> = ({
     }
   }, [open]);
 
-  const handleForge = () => {
+  const handleForge = (e: React.FormEvent) => {
+    e.preventDefault();
     const cleanName = name.trim();
     const cleanSys = instruction.trim();
     if (!cleanName || !cleanSys) {
@@ -541,46 +553,73 @@ export const ForgeSkillDialog: React.FC<ForgeSkillDialogProps> = ({
 
   return (
     <DialogShell open={open} title="Forge Custom Skill" onClose={onClose}>
-      <div className="flex flex-col gap-[8px]">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Skill Name (e.g. Sci-Fi Worldbuilder)"
-          className="px-terminal-input w-full p-[10px] text-[12px]"
-        />
-        <input
-          type="text"
-          value={badge}
-          onChange={(e) => setBadge(e.target.value)}
-          placeholder="Short Badge (e.g. SCI_FI)"
-          className="px-terminal-input w-full p-[10px] font-mono text-[12px] text-[var(--deck-cyan)]"
-        />
-        <textarea
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          rows={3}
-          placeholder="Instruction: how should AI mutate or branch ideas with this skill?"
-          className="px-terminal-input w-full resize-y p-[10px] text-[12px]"
-        />
-      </div>
+      <form onSubmit={handleForge} className="flex flex-col gap-[8px]">
+        <div>
+          <label
+            htmlFor={nameId}
+            className="mb-[4px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+          >
+            Skill Name
+          </label>
+          <input
+            id={nameId}
+            type="text"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Skill Name (e.g. Sci-Fi Worldbuilder)"
+            className="px-terminal-input w-full p-[10px] text-[12px]"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={badgeId}
+            className="mb-[4px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+          >
+            Short Badge (optional)
+          </label>
+          <input
+            id={badgeId}
+            type="text"
+            value={badge}
+            onChange={(e) => setBadge(e.target.value)}
+            placeholder="Short Badge (e.g. SCI_FI)"
+            className="px-terminal-input w-full p-[10px] font-mono text-[12px] text-[var(--deck-cyan)]"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={instructionId}
+            className="mb-[4px] block font-mono text-[10px] font-bold text-[var(--deck-cyan)]"
+          >
+            System Instruction
+          </label>
+          <textarea
+            id={instructionId}
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            rows={3}
+            placeholder="Instruction: how should AI mutate or branch ideas with this skill?"
+            className="px-terminal-input w-full resize-y p-[10px] text-[12px]"
+          />
+        </div>
 
-      <div className="mt-[14px] flex justify-end gap-[8px]">
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-chip-idle h-[34px] cursor-pointer px-[12px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)]"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleForge}
-          className="px-btn-cyan h-[34px] cursor-pointer px-[14px] font-mono text-[11px] font-bold"
-        >
-          Forge Skill
-        </button>
-      </div>
+        <div className="mt-[6px] flex justify-end gap-[8px]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-chip-idle px-touch-ctrl h-[34px] cursor-pointer px-[12px] font-mono text-[11px] font-bold text-[var(--deck-text-muted)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-btn-cyan px-touch-ctrl h-[34px] cursor-pointer px-[14px] font-mono text-[11px] font-bold"
+          >
+            Forge Skill
+          </button>
+        </div>
+      </form>
     </DialogShell>
   );
 };

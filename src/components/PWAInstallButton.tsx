@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { usePWAInstall } from "../hooks/usePWAInstall";
+import { NativeDialog } from "./NativeDialog";
 
 interface PWAInstallButtonProps {
   compact?: boolean;
@@ -10,6 +11,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 }) => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const iosTitleId = useId();
 
   if (isInstalled) {
     return null;
@@ -52,43 +54,38 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
           <span>Install</span>
         </button>
 
-        {showIOSGuide && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-            onClick={() => setShowIOSGuide(false)}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Install on iPhone or iPad"
+        <NativeDialog
+          open={showIOSGuide}
+          onClose={() => setShowIOSGuide(false)}
+          variant="modal"
+          maxWidthClass="max-w-[360px]"
+          ariaLabelledBy={iosTitleId}
+        >
+          <h3
+            id={iosTitleId}
+            className="font-mono text-[13px] font-bold text-[var(--deck-cyan)]"
           >
-            <div
-              className="px-panel w-full max-w-[360px] p-[18px]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="font-mono text-[13px] font-bold text-[var(--deck-cyan)]">
-                Install on iPhone / iPad
-              </h3>
-              <ol className="mt-[10px] list-decimal space-y-[6px] pl-[18px] text-[13px] leading-[1.45] text-[var(--deck-text-body)]">
-                <li>
-                  Tap the <strong>Share</strong> icon in Safari&apos;s toolbar.
-                </li>
-                <li>
-                  Scroll down and tap <strong>Add to Home Screen</strong>.
-                </li>
-                <li>
-                  Tap <strong>Add</strong> to launch NEURAL//DECK in standalone
-                  mode.
-                </li>
-              </ol>
-              <button
-                type="button"
-                onClick={() => setShowIOSGuide(false)}
-                className="px-chip-active mt-[14px] h-[34px] w-full cursor-pointer font-mono text-[11px] font-bold"
-              >
-                Got It
-              </button>
-            </div>
-          </div>
-        )}
+            Install on iPhone / iPad
+          </h3>
+          <ol className="mt-[10px] list-decimal space-y-[6px] pl-[18px] text-[13px] leading-[1.45] text-[var(--deck-text-body)]">
+            <li>
+              Tap the <strong>Share</strong> icon in Safari&apos;s toolbar.
+            </li>
+            <li>
+              Scroll down and tap <strong>Add to Home Screen</strong>.
+            </li>
+            <li>
+              Tap <strong>Add</strong> to launch NEURAL//DECK in standalone mode.
+            </li>
+          </ol>
+          <button
+            type="button"
+            onClick={() => setShowIOSGuide(false)}
+            className="px-chip-active mt-[14px] h-[34px] w-full cursor-pointer font-mono text-[11px] font-bold"
+          >
+            Got It
+          </button>
+        </NativeDialog>
       </>
     );
   }

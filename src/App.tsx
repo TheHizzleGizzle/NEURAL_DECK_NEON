@@ -45,18 +45,16 @@ import {
 } from "./utils/storage";
 import {
   banishCardSubtree,
+  buildCardMetaMaps,
   buildVisibleTree,
-  countSubtree,
   findCardById,
   getActiveGraveyardEntries,
   getAncestorPath,
   getExistingChildTitles,
-  getParentTitle,
   normalizeTag,
   reviveGraveyardEntry,
   sessionToMarkdown,
 } from "./utils/treeUtils";
-import { PixelGridBackground } from "./components/PixelGridBackground";
 import {
   PxBranchIcon,
   PxChipIcon,
@@ -87,8 +85,6 @@ import {
   TextPromptDialog,
 } from "./components/DeckDialogs";
 
-const FALLBACK_FEATURED_MODELS: OpenRouterModelInfo[] = FEATURED_OPENROUTER_MODELS;
-
 /** Filesystem-safe export name (session titles are free text and may contain "/" etc.). */
 function toSafeFileName(base: string, ext: string): string {
   const cleaned = base
@@ -103,22 +99,26 @@ interface ToastState {
   canUndo?: boolean;
 }
 
+type UndoAction =
+  | { type: "banish"; sessionId: string; entryId: string }
+  | { type: "delete"; sessionId: string; cards: IdeaCard[] }
+  | { type: "purge"; sessionId: string; entry: GraveyardEntry };
+
 export default function App() {
   const [sessions, setSessions] = useState<BrainstormSession[]>(() =>
     loadSessions()
   );
   const [activeSessionId, setActiveSessionIdState] = useState<string>(() => {
-    const loaded = loadSessions();
     const saved = getActiveSessionId();
-    const found = loaded.find((s) => s.id === saved);
-    return found ? found.id : loaded[0].id;
+    const found = sessions.find((s) => s.id === saved);
+    return found ? found.id : sessions[0].id;
   });
 
   const [allSkills, setAllSkills] = useState<CreativeSkill[]>(() =>
     loadAllSkills()
   );
   const [activeSkillId, setActiveSkillId] = useState<string>(
-    () => loadAllSkills()[0]?.id ?? "skill_diverge_10x"
+    () => allSkills[0]?.id ?? "skill_diverge_10x"
   );
   const [tuning, setTuning] = useState<DeckTuningConfig>(() =>
     loadTuningConfig()
@@ -126,6 +126,7 @@ export default function App() {
   const [uiPrefs, setUiPrefs] = useState<UiPreferences>(() =>
     loadUiPreferences()
   );
+  const [storageFull, setStorageFull] = useState(false);
 
   // OpenRouter OAuth PKCE session token — held strictly in React memory (never localStorage)
   const [openRouterSessionToken, setOpenRouterSessionToken] = useState<
@@ -134,11 +135,14 @@ export default function App() {
   const [openRouterConnecting, setOpenRouterConnecting] = useState(false);
   const [openRouterModels, setOpenRouterModels] = useState<
     OpenRouterModelInfo[]
-  >(FALLBACK_FEATURED_MODELS);
+  >(FEATURED_OPENROUTER_MODELS);
   const [featuredModels, setFeaturedModels] = useState<OpenRouterModelInfo[]>(
-    FALLBACK_FEATURED_MODELS
+    FEATURED_OPENROUTER_MODELS
   );
   const modelsLoadedRef = useRef(false);
+  const oauthPopupRef = useRef<Window | null>(null);
+  const oauthExpectedOriginRef = useRef<string | null>(null);
+  const oauthPollRef = useRef<number | null>(null);
 
   // Native app only: user's own provider API keys (persisted on-device, never exported).
   const [providerKeys, setProviderKeys] = useState<ProviderKeys>(() =>
@@ -214,26 +218,33 @@ export default function App() {
 
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<number | null>(null);
-  const undoSnapshotRef = useRef<BrainstormSession | null>(null);
+  const undoActionRef = useRef<UndoAction | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      if (oauthPollRef.current !== null) {
+        window.clearInterval(oauthPollRef.current);
+      }
+    };
+  }, []);
 
   const showToast = useCallback(
-    (message: string, undoSnapshot?: BrainstormSession) => {
-      if (undoSnapshot) {
-        undoSnapshotRef.current = undoSnapshot;
-      } else {
-        undoSnapshotRef.current = null;
-      }
-      setToast({ message, canUndo: Boolean(undoSnapshot) });
+    (message: string, undoAction?: UndoAction) => {
+      undoActionRef.current = undoAction ?? null;
+      setToast({ message, canUndo: Boolean(undoAction) });
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
       }
       toastTimerRef.current = window.setTimeout(
         () => {
           setToast(null);
-          undoSnapshotRef.current = null;
+          undoActionRef.current = null;
           toastTimerRef.current = null;
         },
-        undoSnapshot ? 6000 : 3000
+        undoAction ? 6000 : 3000
       );
     },
     []
@@ -242,6 +253,9 @@ export default function App() {
   const activeSession = useMemo(() => {
     return sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   }, [sessions, activeSessionId]);
+
+  const activeSessionIdRef = useRef(activeSession.id);
+  activeSessionIdRef.current = activeSession.id;
 
   const activeSkill = useMemo(() => {
     return allSkills.find((s) => s.id === activeSkillId) ?? allSkills[0] ?? null;
@@ -262,33 +276,85 @@ export default function App() {
     (updater: (prev: BrainstormSession[]) => BrainstormSession[]) => {
       setSessions((prev) => {
         const next = updater(prev);
-        saveSessions(next);
+        const ok = saveSessions(next);
+        queueMicrotask(() => setStorageFull(!ok));
         return next;
       });
     },
     []
   );
 
-  const updateActiveSession = useCallback(
-    (updater: (session: BrainstormSession) => BrainstormSession) => {
+  const updateSessionById = useCallback(
+    (
+      sessionId: string,
+      updater: (session: BrainstormSession) => BrainstormSession
+    ) => {
       updateSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSession.id
+          s.id === sessionId
             ? { ...updater(s), updatedAt: Date.now() }
             : s
         )
       );
     },
-    [activeSession.id, updateSessions]
+    [updateSessions]
+  );
+
+  const updateActiveSession = useCallback(
+    (updater: (session: BrainstormSession) => BrainstormSession) => {
+      updateSessionById(activeSession.id, updater);
+    },
+    [activeSession.id, updateSessionById]
   );
 
   const handleUndo = () => {
-    const snap = undoSnapshotRef.current;
-    if (!snap) return;
-    updateSessions((prev) =>
-      prev.map((s) => (s.id === snap.id ? snap : s))
-    );
-    undoSnapshotRef.current = null;
+    const action = undoActionRef.current;
+    if (!action) return;
+    undoActionRef.current = null;
+
+    if (action.type === "banish") {
+      updateSessionById(action.sessionId, (s) => {
+        const res = reviveGraveyardEntry(s, action.entryId);
+        return res.revivedCount > 0
+          ? { ...s, cards: res.cards, graveyard: res.graveyard }
+          : s;
+      });
+    } else if (action.type === "delete") {
+      updateSessionById(action.sessionId, (s) => {
+        const existingIds = new Set(s.cards.map((c) => c.id));
+        const candidates = action.cards.filter((c) => !existingIds.has(c.id));
+        if (candidates.length === 0) return s;
+
+        const restoredIds = new Set([
+          ...existingIds,
+          ...candidates.map((c) => c.id),
+        ]);
+        const toRestore = candidates.map((c) =>
+          c.parentId && !restoredIds.has(c.parentId)
+            ? { ...c, parentId: null, depth: 0 }
+            : c
+        );
+
+        const anchorParentId = toRestore[0]?.parentId;
+        const nextCards = [...s.cards];
+        if (anchorParentId && existingIds.has(anchorParentId)) {
+          const idx = nextCards.findIndex((c) => c.id === anchorParentId);
+          if (idx >= 0) {
+            nextCards[idx] = { ...nextCards[idx], collapsed: false };
+            nextCards.splice(idx + 1, 0, ...toRestore);
+            return { ...s, cards: nextCards };
+          }
+        }
+        return { ...s, cards: [...toRestore, ...nextCards] };
+      });
+    } else if (action.type === "purge") {
+      updateSessionById(action.sessionId, (s) =>
+        s.graveyard.some((g) => g.id === action.entry.id)
+          ? s
+          : { ...s, graveyard: [action.entry, ...s.graveyard] }
+      );
+    }
+
     setToast(null);
     showToast("Action undone.");
   };
@@ -319,14 +385,24 @@ export default function App() {
 
   // Listen for OpenRouter OAuth PKCE popup completion
   useEffect(() => {
+    const clearOAuthFlow = () => {
+      if (oauthPollRef.current !== null) {
+        window.clearInterval(oauthPollRef.current);
+        oauthPollRef.current = null;
+      }
+      oauthPopupRef.current = null;
+      oauthExpectedOriginRef.current = null;
+    };
+
     const handleMessage = (event: MessageEvent) => {
-      const origin = event.origin || "";
-      const isTrusted =
-        origin === window.location.origin ||
-        origin.endsWith(".run.app") ||
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1");
-      if (!isTrusted) return;
+      if (
+        !oauthPopupRef.current ||
+        event.source !== oauthPopupRef.current ||
+        !oauthExpectedOriginRef.current ||
+        event.origin !== oauthExpectedOriginRef.current
+      ) {
+        return;
+      }
 
       const data = event.data as
         | { type?: string; sessionToken?: string; error?: string }
@@ -338,6 +414,7 @@ export default function App() {
         typeof data.sessionToken === "string" &&
         data.sessionToken.length > 0
       ) {
+        clearOAuthFlow();
         setOpenRouterSessionToken(data.sessionToken);
         setOpenRouterConnecting(false);
         setTuning((prev) => {
@@ -347,6 +424,7 @@ export default function App() {
         });
         showToast("OpenRouter account connected for this session.");
       } else if (data.type === "OPENROUTER_OAUTH_ERROR") {
+        clearOAuthFlow();
         setOpenRouterConnecting(false);
         setErrorDialog({
           code: "OpenRouter OAuth",
@@ -363,13 +441,18 @@ export default function App() {
   const handleConnectOpenRouter = async () => {
     setOpenRouterConnecting(true);
     try {
-      const { url } = await fetchOpenRouterAuthUrl();
+      const { url, callbackBaseUrl } = await fetchOpenRouterAuthUrl();
+      oauthExpectedOriginRef.current = new URL(
+        callbackBaseUrl,
+        window.location.origin
+      ).origin;
       const popup = window.open(
         url,
         "openrouter_oauth_popup",
         "width=600,height=720"
       );
       if (!popup) {
+        oauthExpectedOriginRef.current = null;
         setOpenRouterConnecting(false);
         setErrorDialog({
           code: "Popup Blocked",
@@ -378,14 +461,25 @@ export default function App() {
         });
         return;
       }
+      oauthPopupRef.current = popup;
+      if (oauthPollRef.current !== null) {
+        window.clearInterval(oauthPollRef.current);
+      }
       // Reset connecting state if user closes popup manually
-      const poll = window.setInterval(() => {
+      oauthPollRef.current = window.setInterval(() => {
         if (popup.closed) {
-          window.clearInterval(poll);
+          if (oauthPollRef.current !== null) {
+            window.clearInterval(oauthPollRef.current);
+            oauthPollRef.current = null;
+          }
+          oauthPopupRef.current = null;
+          oauthExpectedOriginRef.current = null;
           setOpenRouterConnecting(false);
         }
       }, 600);
     } catch (err) {
+      oauthPopupRef.current = null;
+      oauthExpectedOriginRef.current = null;
       setOpenRouterConnecting(false);
       setErrorDialog({
         code: "OpenRouter OAuth",
@@ -446,6 +540,11 @@ export default function App() {
     );
   }, [activeSession.cards, filterMode, searchQuery, activeTag]);
 
+  const cardMeta = useMemo(
+    () => buildCardMetaMaps(activeSession.cards),
+    [activeSession.cards]
+  );
+
   const selectedMashupSet = useMemo(
     () => new Set(selectedMashupIds),
     [selectedMashupIds]
@@ -456,16 +555,21 @@ export default function App() {
   /* --- AI Operations --- */
 
   const sparkRootIdeas = async (overridePrompt?: string) => {
+    if (isAnyAiBusy) return;
     const seed = (overridePrompt ?? seedPromptInput).trim();
     if (!seed) {
       showToast("Enter a seed idea in the bottom dock first.");
       return;
     }
 
+    const targetSessionId = activeSession.id;
+    const targetConstraints = activeSession.sessionConstraints;
+    const targetGraveyard = getActiveGraveyardEntries(activeSession);
+
     if (overridePrompt !== undefined) {
       setSeedPromptInput(seed);
     }
-    updateActiveSession((s) => ({ ...s, seedPrompt: seed }));
+    updateSessionById(targetSessionId, (s) => ({ ...s, seedPrompt: seed }));
 
     const badge = activeSkill?.badge ?? "SEED";
     setLoadingMessage(`Sparking root ideas with [${badge}]...`);
@@ -473,22 +577,24 @@ export default function App() {
       const generated = await generateSeedIdeas(
         tuning,
         seed,
-        activeSession.sessionConstraints,
+        targetConstraints,
         activeSkill,
-        getActiveGraveyardEntries(activeSession),
+        targetGraveyard,
         openRouterSessionToken
       );
-      updateActiveSession((s) => ({
+      updateSessionById(targetSessionId, (s) => ({
         ...s,
         seedPrompt: seed,
         cards: [...generated, ...s.cards],
       }));
-      setFilterMode("ALL");
-      setSearchQuery("");
-      setActiveTag(null);
-      requestAnimationFrame(() => {
-        treeScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      });
+      if (activeSessionIdRef.current === targetSessionId) {
+        setFilterMode("ALL");
+        setSearchQuery("");
+        setActiveTag(null);
+        requestAnimationFrame(() => {
+          treeScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      }
     } catch (err) {
       const details =
         err instanceof Error ? err.message : "Unexpected AI request error";
@@ -499,23 +605,30 @@ export default function App() {
   };
 
   const handleSharpenSeed = async () => {
+    if (isAnyAiBusy) return;
     const raw = seedPromptInput.trim();
     if (!raw) {
       showToast("Type a rough seed idea first to sharpen it.");
       return;
     }
+    const targetSessionId = activeSession.id;
+    const targetConstraints = activeSession.sessionConstraints;
+    const targetGraveyard = getActiveGraveyardEntries(activeSession);
+
     setIsSharpening(true);
     try {
       const sharpened = await sharpenSeedPrompt(
         tuning,
         raw,
-        activeSession.sessionConstraints,
-        getActiveGraveyardEntries(activeSession),
+        targetConstraints,
+        targetGraveyard,
         openRouterSessionToken
       );
-      setPreviousSeedDraft(raw);
-      setSeedPromptInput(sharpened);
-      updateActiveSession((s) => ({ ...s, seedPrompt: sharpened }));
+      updateSessionById(targetSessionId, (s) => ({ ...s, seedPrompt: sharpened }));
+      if (activeSessionIdRef.current === targetSessionId) {
+        setPreviousSeedDraft(raw);
+        setSeedPromptInput(sharpened);
+      }
       showToast("Seed sharpened. Ready to spark.");
     } catch (err) {
       const details =
@@ -531,18 +644,23 @@ export default function App() {
     skill: CreativeSkill,
     steeringNote?: string
   ) => {
-    updateActiveSession((s) => ({
-      ...s,
-      cards: s.cards.map((c) =>
-        c.id === parent.id ? { ...c, collapsed: false } : c
-      ),
-    }));
-
+    if (isAnyAiBusy) return;
+    const targetSessionId = activeSession.id;
+    const targetSeed = activeSession.seedPrompt;
+    const targetConstraints = activeSession.sessionConstraints;
+    const targetGraveyard = getActiveGraveyardEntries(activeSession);
     const ancestorPath = getAncestorPath(activeSession.cards, parent.id);
     const existingChildren = getExistingChildTitles(
       activeSession.cards,
       parent.id
     );
+
+    updateSessionById(targetSessionId, (s) => ({
+      ...s,
+      cards: s.cards.map((c) =>
+        c.id === parent.id ? { ...c, collapsed: false } : c
+      ),
+    }));
 
     setLoadingMessage(
       steeringNote
@@ -555,26 +673,33 @@ export default function App() {
         parent,
         ancestorPath,
         existingChildren,
-        activeSession.seedPrompt,
-        activeSession.sessionConstraints,
+        targetSeed,
+        targetConstraints,
         skill,
-        getActiveGraveyardEntries(activeSession),
+        targetGraveyard,
         steeringNote,
         openRouterSessionToken
       );
-      updateActiveSession((s) => {
+      updateSessionById(targetSessionId, (s) => {
         const idx = s.cards.findIndex((c) => c.id === parent.id);
         const nextCards = [...s.cards];
         if (idx >= 0) {
           nextCards.splice(idx + 1, 0, ...children);
         } else {
-          nextCards.push(...children);
+          const orphanRoots = children.map((c) => ({
+            ...c,
+            parentId: null,
+            depth: 0,
+          }));
+          nextCards.unshift(...orphanRoots);
         }
         return { ...s, cards: nextCards };
       });
-      setFilterMode("ALL");
-      setSearchQuery("");
-      setActiveTag(null);
+      if (activeSessionIdRef.current === targetSessionId) {
+        setFilterMode("ALL");
+        setSearchQuery("");
+        setActiveTag(null);
+      }
     } catch (err) {
       const details =
         err instanceof Error ? err.message : "Unexpected AI request error";
@@ -585,10 +710,16 @@ export default function App() {
   };
 
   const executeMashup = async () => {
+    if (isAnyAiBusy) return;
     if (selectedMashupIds.length < 2) {
       showToast("Select at least 2 idea cards with [+ Splice] to fuse them.");
       return;
     }
+
+    const targetSessionId = activeSession.id;
+    const targetSeed = activeSession.seedPrompt;
+    const targetConstraints = activeSession.sessionConstraints;
+    const targetGraveyard = getActiveGraveyardEntries(activeSession);
 
     const selectedCards: IdeaCard[] = [];
     for (const id of selectedMashupIds) {
@@ -602,13 +733,13 @@ export default function App() {
       const hybrids = await mashupCards(
         tuning,
         selectedCards,
-        activeSession.seedPrompt,
-        activeSession.sessionConstraints,
-        getActiveGraveyardEntries(activeSession),
+        targetSeed,
+        targetConstraints,
+        targetGraveyard,
         openRouterSessionToken
       );
       const anchor = selectedCards[0];
-      updateActiveSession((s) => {
+      updateSessionById(targetSessionId, (s) => {
         const nextCards = s.cards.map((c) =>
           c.id === anchor.id ? { ...c, collapsed: false } : c
         );
@@ -616,14 +747,21 @@ export default function App() {
         if (idx >= 0) {
           nextCards.splice(idx + 1, 0, ...hybrids);
         } else {
-          nextCards.push(...hybrids);
+          const orphanRoots = hybrids.map((c) => ({
+            ...c,
+            parentId: null,
+            depth: 0,
+          }));
+          nextCards.unshift(...orphanRoots);
         }
         return { ...s, cards: nextCards };
       });
-      setSelectedMashupIds([]);
-      setFilterMode("ALL");
-      setSearchQuery("");
-      setActiveTag(null);
+      if (activeSessionIdRef.current === targetSessionId) {
+        setSelectedMashupIds([]);
+        setFilterMode("ALL");
+        setSearchQuery("");
+        setActiveTag(null);
+      }
     } catch (err) {
       const details =
         err instanceof Error ? err.message : "Unexpected AI request error";
@@ -634,22 +772,29 @@ export default function App() {
   };
 
   const handleSynthesizeBrief = async (format: BriefFormat) => {
+    if (isAnyAiBusy) return;
     if (starredCards.length === 0) {
       showToast("Star at least one idea card first.");
       return;
     }
+    const targetSessionId = activeSession.id;
+    const targetFinalists = starredCards;
+    const targetSeed = activeSession.seedPrompt;
+    const targetConstraints = activeSession.sessionConstraints;
+    const targetGraveyard = getActiveGraveyardEntries(activeSession);
+
     setIsSynthesizing(true);
     try {
       const brief = await synthesizeConvergenceBrief(
         tuning,
         format,
-        starredCards,
-        activeSession.seedPrompt,
-        activeSession.sessionConstraints,
-        getActiveGraveyardEntries(activeSession),
+        targetFinalists,
+        targetSeed,
+        targetConstraints,
+        targetGraveyard,
         openRouterSessionToken
       );
-      updateActiveSession((s) => ({ ...s, brief }));
+      updateSessionById(targetSessionId, (s) => ({ ...s, brief }));
       showToast("Decision brief synthesized.");
     } catch (err) {
       const details =
@@ -793,30 +938,38 @@ export default function App() {
     reasonCode: string,
     customRule: string
   ) => {
-    const snapshot = activeSession;
+    const targetSessionId = activeSession.id;
     const { cards, graveyard, removedIds } = banishCardSubtree(
       activeSession,
       card,
       reasonCode,
       customRule
     );
+    const archivedCards = activeSession.cards.filter((c) =>
+      removedIds.has(c.id)
+    );
     setSelectedMashupIds((prev) => prev.filter((id) => !removedIds.has(id)));
-    updateActiveSession((s) => ({ ...s, cards, graveyard }));
+    updateSessionById(targetSessionId, (s) => ({ ...s, cards, graveyard }));
 
     const removedCount = removedIds.size;
     if (reasonCode !== "DELETE_ONLY") {
+      const createdEntry = graveyard[0];
       showToast(
         removedCount > 1
           ? `Banished "${card.title}" + ${removedCount - 1} child ideas.`
           : `Banished "${card.title}" to Graveyard.`,
-        snapshot
+        createdEntry
+          ? { type: "banish", sessionId: targetSessionId, entryId: createdEntry.id }
+          : undefined
       );
     } else {
       showToast(
         removedCount > 1
           ? `Deleted "${card.title}" + ${removedCount - 1} child ideas.`
           : `Deleted "${card.title}".`,
-        snapshot
+        archivedCards.length > 0
+          ? { type: "delete", sessionId: targetSessionId, cards: archivedCards }
+          : undefined
       );
     }
   };
@@ -846,12 +999,18 @@ export default function App() {
   };
 
   const handlePurgeGraveEntry = (entryId: string) => {
-    const snapshot = activeSession;
-    updateActiveSession((s) => ({
+    const targetSessionId = activeSession.id;
+    const removedEntry = activeSession.graveyard.find((g) => g.id === entryId);
+    updateSessionById(targetSessionId, (s) => ({
       ...s,
       graveyard: s.graveyard.filter((g) => g.id !== entryId),
     }));
-    showToast("Graveyard entry purged.", snapshot);
+    showToast(
+      "Graveyard entry purged.",
+      removedEntry
+        ? { type: "purge", sessionId: targetSessionId, entry: removedEntry }
+        : undefined
+    );
   };
 
   /* --- Skills Actions --- */
@@ -885,14 +1044,20 @@ export default function App() {
       builtIn: false,
     };
     const customs = [...loadCustomSkills(), custom];
-    saveCustomSkills(customs);
+    const ok = saveCustomSkills(customs);
+    setStorageFull(!ok);
+    if (!ok) {
+      showToast("Storage full — export a JSON backup before closing.");
+      return;
+    }
     setAllSkills(loadAllSkills());
     showToast(`Forged custom skill [${badge}].`);
   };
 
   const handleDeleteCustomSkill = (skillId: string) => {
     const customs = loadCustomSkills().filter((s) => s.id !== skillId);
-    saveCustomSkills(customs);
+    const ok = saveCustomSkills(customs);
+    setStorageFull(!ok);
     const updated = loadAllSkills();
     setAllSkills(updated);
     if (activeSkillId === skillId && updated.length > 0) {
@@ -938,13 +1103,15 @@ export default function App() {
 
   const handleDeleteCurrentSession = () => {
     if (sessions.length <= 1) return;
-    const remaining = sessions.filter((s) => s.id !== activeSession.id);
-    saveSessions(remaining);
-    setSessions(remaining);
+    const deletedTitle = activeSession.title;
+    const deletedId = activeSession.id;
+    const remaining = sessions.filter((s) => s.id !== deletedId);
+    if (remaining.length === 0) return;
+    updateSessions((prev) => prev.filter((s) => s.id !== deletedId));
     setActiveSessionIdState(remaining[0].id);
     setActiveSessionId(remaining[0].id);
     setSelectedMashupIds([]);
-    showToast(`Deleted session "${activeSession.title}".`);
+    showToast(`Deleted session "${deletedTitle}".`);
   };
 
   /* --- Export Markdown --- */
@@ -1043,14 +1210,15 @@ export default function App() {
   );
 
   return (
-    <div className="relative flex h-dvh w-full justify-center overflow-hidden bg-[var(--deck-void)]">
-      {/* Theme-aware pixel dot-grid backdrop */}
-      <PixelGridBackground theme={uiPrefs.theme} visible={uiPrefs.showGrid} />
-
+    <div
+      className={`relative flex h-dvh w-full justify-center overflow-hidden ${
+        uiPrefs.showGrid ? "px-grid-bg" : "bg-[var(--deck-void)]"
+      }`}
+    >
       {/* Wide Responsive Cyber-Deck Workstation Shell */}
-      <div className="relative z-10 flex h-full w-full max-w-[1400px] flex-col lg:gap-[12px] lg:p-[12px]">
+      <div className="relative z-10 flex h-full w-full max-w-[1400px] flex-col lg:gap-[10px] lg:p-[10px]">
         {/* TOP HEADER BAR */}
-        <header className="px-panel flex shrink-0 items-center justify-between gap-[8px] px-[10px] py-[9px] sm:gap-[12px] sm:px-[14px] sm:py-[10px]">
+        <header className="px-panel flex shrink-0 items-center justify-between gap-[8px] px-[10px] py-[7px] sm:gap-[12px] sm:px-[14px] sm:py-[8px]">
           <div className="flex min-w-0 flex-1 items-center gap-[8px] sm:gap-[12px]">
             <span className="font-mono text-[12px] font-bold tracking-[0.08em] whitespace-nowrap text-[var(--deck-cyan)] sm:text-[13px] sm:tracking-[0.1em]">
               <span className="sm:hidden">N//D</span>
@@ -1139,7 +1307,7 @@ export default function App() {
           {/* LEFT / MAIN COLUMN: IDEA TREE WORKSPACE + SEED DOCK */}
           <div className="flex min-h-0 flex-col border-[var(--deck-border)] lg:border-2 lg:bg-[var(--deck-canvas)]">
             {/* Workspace Filter, Search & Human Authoring Toolbar */}
-            <div className="shrink-0 border-b border-[var(--deck-border)] bg-[var(--deck-panel)] px-[12px] py-[8px]">
+            <div className="shrink-0 border-b border-[var(--deck-border)] bg-[var(--deck-panel)] px-[10px] py-[6px]">
               <div className="flex flex-wrap items-center gap-[6px]">
                 {/* Filter Tabs */}
                 <div className="flex items-center gap-[4px]">
@@ -1158,8 +1326,11 @@ export default function App() {
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setFilterMode(tab.id)}
-                        className={`flex h-[30px] cursor-pointer items-center px-[9px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110 ${
+                        onClick={() => {
+                          setFilterMode(tab.id);
+                          if (tab.id === "ALL") setActiveTag(null);
+                        }}
+                        className={`px-touch-ctrl flex h-[28px] cursor-pointer items-center px-[9px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110 ${
                           active
                             ? "px-chip-active"
                             : "px-chip-idle text-[var(--deck-text-muted)]"
@@ -1323,8 +1494,12 @@ export default function App() {
                     <IdeaCardRow
                       key={card.id}
                       card={card}
-                      subtreeCount={countSubtree(activeSession.cards, card.id)}
-                      parentTitle={getParentTitle(activeSession.cards, card)}
+                      subtreeCount={cardMeta.subtreeCounts.get(card.id) ?? 0}
+                      parentTitle={
+                        card.parentId
+                          ? cardMeta.titleById.get(card.parentId) ?? null
+                          : null
+                      }
                       isFlatView={isFlatView}
                       compact={uiPrefs.compactCards}
                       activeSkill={activeSkill}
@@ -1357,6 +1532,25 @@ export default function App() {
               )}
             </main>
 
+            {/* Storage quota warning banner */}
+            {storageFull && (
+              <div
+                role="alert"
+                className="flex shrink-0 items-center gap-[8px] border-t border-[var(--deck-amber)]/60 bg-[var(--deck-amber-bg)] px-[12px] py-[7px]"
+              >
+                <span className="flex-1 text-[12px] font-medium text-[var(--deck-text)]">
+                  Local storage is full — new edits stay in memory until freed.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleExportBackupJson()}
+                  className="px-chip-active h-[30px] shrink-0 cursor-pointer px-[10px] font-mono text-[11px] font-bold whitespace-nowrap"
+                >
+                  Backup JSON
+                </button>
+              </div>
+            )}
+
             {/* Native app: prompt for an API key before the first AI call */}
             {DIRECT_PROVIDER_MODE &&
               (tuning.provider === "openrouter" ? !openRouterConnected : !geminiReady) && (
@@ -1380,7 +1574,7 @@ export default function App() {
               )}
 
             {/* BOTTOM SEED DOCK */}
-            <footer className="shrink-0 border-t-2 border-[var(--deck-border)] bg-[var(--deck-panel)] px-[12px] pt-[10px] pb-[10px]">
+            <footer className="shrink-0 border-t-2 border-[var(--deck-border)] bg-[var(--deck-panel)] px-[12px] py-[8px]">
               <textarea
                 value={seedPromptInput}
                 onChange={(e) => {
@@ -1398,22 +1592,22 @@ export default function App() {
                 onKeyDown={(e) => {
                   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     e.preventDefault();
-                    sparkRootIdeas();
+                    if (!isAnyAiBusy) sparkRootIdeas();
                   }
                 }}
                 rows={2}
                 aria-label="Brainstorm seed prompt"
                 placeholder='Enter a raw idea, problem, or "what-if" seed... (Ctrl+Enter to spark)'
-                className="px-terminal-input max-h-[110px] w-full resize-none p-[10px] text-[13px] leading-[1.45]"
+                className="px-terminal-input max-h-[110px] w-full resize-none p-[8px] text-[13px] leading-[1.45]"
               />
 
-              <div className="mt-[8px] flex items-center gap-[8px]">
+              <div className="mt-[6px] flex items-center gap-[8px]">
                 {/* 1-Click Inline Seed Sharpener */}
                 <button
                   type="button"
                   disabled={isAnyAiBusy}
                   onClick={handleSharpenSeed}
-                  className="px-btn-magenta flex h-[38px] cursor-pointer items-center justify-center gap-[6px] px-[14px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110 disabled:opacity-50"
+                  className="px-btn-magenta px-touch-ctrl flex h-[34px] cursor-pointer items-center justify-center gap-[6px] px-[12px] font-mono text-[11px] font-bold whitespace-nowrap hover:brightness-110 disabled:opacity-50"
                 >
                   <PxSparkIcon size={13} color="var(--deck-magenta)" />
                   <span>{isSharpening ? "Sharpening..." : "Sharpen Seed"}</span>
@@ -1430,14 +1624,13 @@ export default function App() {
                       }));
                       setPreviousSeedDraft(null);
                     }}
-                    className="px-chip-idle flex h-[38px] cursor-pointer items-center px-[10px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+                    className="px-chip-idle px-touch-ctrl flex h-[34px] cursor-pointer items-center px-[10px] font-mono text-[10px] font-bold whitespace-nowrap text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
                   >
                     Revert
                   </button>
                 )}
 
                 <div className="hidden flex-1 truncate text-right font-mono text-[10px] text-[var(--deck-text-faint)] sm:block">
-                  Skill: {activeSkill?.badge ?? "SEED"} ·{" "}
                   {tuning.provider === "openrouter"
                     ? openRouterConnected
                       ? tuning.openRouterModel.split("/").pop()
@@ -1454,7 +1647,7 @@ export default function App() {
                   type="button"
                   disabled={isAnyAiBusy}
                   onClick={() => sparkRootIdeas()}
-                  className="px-btn-cyan flex h-[38px] flex-1 cursor-pointer items-center justify-center gap-[6px] px-[16px] font-mono text-[12px] font-bold whitespace-nowrap hover:brightness-110 disabled:opacity-50 sm:flex-initial"
+                  className="px-btn-cyan px-touch-ctrl flex h-[34px] flex-1 cursor-pointer items-center justify-center gap-[6px] px-[14px] font-mono text-[12px] font-bold whitespace-nowrap hover:brightness-110 disabled:opacity-50 sm:flex-initial"
                 >
                   <PxBranchIcon size={14} color="var(--deck-cyan-btn-text)" />
                   <span>Spark Ideas</span>
@@ -1585,7 +1778,7 @@ export default function App() {
       <BanishDialog
         card={banishTarget}
         subtreeCount={
-          banishTarget ? countSubtree(activeSession.cards, banishTarget.id) : 0
+          banishTarget ? (cardMeta.subtreeCounts.get(banishTarget.id) ?? 0) : 0
         }
         onClose={() => setBanishTarget(null)}
         onBanish={handleBanishConfirm}

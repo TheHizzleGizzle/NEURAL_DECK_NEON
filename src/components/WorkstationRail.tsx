@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import type {
   BriefFormat,
   DeckTuningConfig,
@@ -97,6 +97,8 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
 }) => {
   const [briefFormat, setBriefFormat] = useState<BriefFormat>("mvp_48h");
   const [confirmPurgeId, setConfirmPurgeId] = useState<string | null>(null);
+  const sessionConstraintsId = useId();
+  const globalContextId = useId();
 
   const activeGuardrailCount = graveyard.filter((g) => g.activeInPrompts).length;
 
@@ -205,22 +207,32 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
               </div>
             ) : (
               <>
-                <div className="space-y-[10px]">
+                <div className="space-y-[8px]">
                   {starredCards.map((card) => {
                     const ratings = card.ratings ?? { impact: 3, effort: 3 };
                     const quad = card.ratings ? classifyQuadrant(card.ratings) : null;
                     return (
                       <div
                         key={card.id}
-                        className="border border-[var(--deck-border)] bg-[var(--deck-subcard)] p-[11px]"
+                        className="border border-[var(--deck-border)] bg-[var(--deck-subcard)] p-[9px]"
                         data-testid="shortlist-item"
                       >
-                        <div className="flex items-start gap-[8px]">
+                        <div className="flex items-start gap-[6px]">
                           <div className="min-w-0 flex-1">
-                            <div className="font-mono text-[12px] font-bold text-[var(--deck-text)]">
-                              {card.title}
+                            <div className="flex flex-wrap items-center gap-x-[6px] gap-y-[2px]">
+                              <span className="font-mono text-[12px] font-bold text-[var(--deck-text)]">
+                                {card.title}
+                              </span>
+                              {quad && (
+                                <span
+                                  className="font-mono text-[10px] font-bold"
+                                  style={{ color: quadrantVarColor(quad.label) }}
+                                >
+                                  · {quad.label}
+                                </span>
+                              )}
                             </div>
-                            <p className="mt-[3px] line-clamp-2 text-[12px] leading-[1.4] text-[var(--deck-text-muted)]">
+                            <p className="mt-[2px] line-clamp-1 text-[11px] leading-[1.35] text-[var(--deck-text-muted)]">
                               {card.summary}
                             </p>
                           </div>
@@ -228,14 +240,14 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
                             type="button"
                             onClick={() => onToggleStar(card)}
                             aria-label={`Remove ${card.title} from shortlist`}
-                            className="shrink-0 cursor-pointer p-[2px] hover:brightness-110"
+                            className="shrink-0 cursor-pointer p-[4px] hover:brightness-110"
                           >
                             <PxStarIcon size={14} color="var(--deck-amber)" />
                           </button>
                         </div>
 
                         {/* Human Impact & Effort Rating Controls */}
-                        <div className="mt-[10px] space-y-[6px] border-t border-[var(--deck-border)] pt-[8px]">
+                        <div className="mt-[7px] space-y-[5px] border-t border-[var(--deck-border)] pt-[6px]">
                           <div className="flex items-center justify-between gap-[8px]">
                             <span className="font-mono text-[10px] font-bold text-[var(--deck-text-muted)]">
                               Impact
@@ -260,7 +272,7 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
                                     }
                                     aria-label={`Set ${card.title} impact to ${n}`}
                                     aria-pressed={Boolean(active)}
-                                    className={`h-[22px] w-[24px] cursor-pointer font-mono text-[10px] font-bold ${
+                                    className={`px-touch-ctrl h-[26px] min-w-[26px] cursor-pointer font-mono text-[10px] font-bold ${
                                       active
                                         ? "bg-[var(--deck-green)] text-white dark:text-[#050811]"
                                         : "border border-[var(--deck-border-strong)] bg-[var(--deck-panel-alt)] text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
@@ -297,7 +309,7 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
                                     }
                                     aria-label={`Set ${card.title} effort to ${n}`}
                                     aria-pressed={Boolean(active)}
-                                    className={`h-[22px] w-[24px] cursor-pointer font-mono text-[10px] font-bold ${
+                                    className={`px-touch-ctrl h-[26px] min-w-[26px] cursor-pointer font-mono text-[10px] font-bold ${
                                       active
                                         ? "bg-[var(--deck-amber)] text-white dark:text-[#050811]"
                                         : "border border-[var(--deck-border-strong)] bg-[var(--deck-panel-alt)] text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
@@ -309,20 +321,6 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
                               })}
                             </div>
                           </div>
-
-                          {quad && (
-                            <div className="flex items-center justify-between pt-[2px] font-mono text-[10px]">
-                              <span className="text-[var(--deck-text-faint)]">
-                                Quadrant
-                              </span>
-                              <span
-                                className="font-bold"
-                                style={{ color: quadrantVarColor(quad.label) }}
-                              >
-                                {quad.label}
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     );
@@ -454,8 +452,10 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
               </h2>
               <p className="mt-[4px] text-[12px] leading-[1.45] text-[var(--deck-text-muted)]">
                 {activeGuardrailCount} active guardrail
-                {activeGuardrailCount === 1 ? "" : "s"} automatically steer AI
-                away from rejected tropes across every branch and brief.
+                {activeGuardrailCount === 1
+                  ? " automatically steers"
+                  : "s automatically steer"}{" "}
+                AI away from rejected tropes across every branch and brief.
               </p>
             </div>
 
@@ -591,7 +591,7 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
             {/* Session-Specific Constraints */}
             <div>
               <label
-                htmlFor="session-constraints-input"
+                htmlFor={sessionConstraintsId}
                 className="block font-mono text-[11px] font-bold text-[var(--deck-cyan)]"
               >
                 Session Constraints &amp; Target Audience
@@ -601,7 +601,7 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
                 rules).
               </p>
               <textarea
-                id="session-constraints-input"
+                id={sessionConstraintsId}
                 value={sessionConstraints}
                 onChange={(e) => onUpdateSessionConstraints(e.target.value)}
                 rows={3}
@@ -613,7 +613,7 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
             {/* Global Persona */}
             <div>
               <label
-                htmlFor="global-context-input"
+                htmlFor={globalContextId}
                 className="block font-mono text-[11px] font-bold text-[var(--deck-cyan)]"
               >
                 Global Persona &amp; Defaults
@@ -622,7 +622,7 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
                 Carried across all sessions in this browser.
               </p>
               <textarea
-                id="global-context-input"
+                id={globalContextId}
                 value={tuning.globalContext}
                 onChange={(e) =>
                   onUpdateTuning({ ...tuning, globalContext: e.target.value })
@@ -666,38 +666,40 @@ export const WorkstationRail: React.FC<WorkstationRailProps> = ({
               </div>
             </div>
 
-            {/* Reasoning Depth */}
-            <div>
-              <div className="font-mono text-[11px] font-bold text-[var(--deck-cyan)]">
-                Reasoning Depth
+            {/* Reasoning Depth (Gemini only) */}
+            {tuning.provider === "gemini" && (
+              <div>
+                <div className="font-mono text-[11px] font-bold text-[var(--deck-cyan)]">
+                  Reasoning Depth
+                </div>
+                <div className="mt-[6px] grid grid-cols-3 gap-[6px]">
+                  {REASONING_OPTIONS.map((opt) => {
+                    const active = tuning.reasoningPreset === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          onUpdateTuning({ ...tuning, reasoningPreset: opt.id })
+                        }
+                        className={`cursor-pointer p-[8px] text-left ${
+                          active
+                            ? "px-chip-active"
+                            : "px-chip-idle text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
+                        }`}
+                      >
+                        <div className="font-mono text-[11px] font-bold">
+                          {opt.label}
+                        </div>
+                        <div className="mt-[2px] text-[10px] opacity-80">
+                          {opt.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="mt-[6px] grid grid-cols-3 gap-[6px]">
-                {REASONING_OPTIONS.map((opt) => {
-                  const active = tuning.reasoningPreset === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() =>
-                        onUpdateTuning({ ...tuning, reasoningPreset: opt.id })
-                      }
-                      className={`cursor-pointer p-[8px] text-left ${
-                        active
-                          ? "px-chip-active"
-                          : "px-chip-idle text-[var(--deck-text-muted)] hover:text-[var(--deck-text)]"
-                      }`}
-                    >
-                      <div className="font-mono text-[11px] font-bold">
-                        {opt.label}
-                      </div>
-                      <div className="mt-[2px] text-[10px] opacity-80">
-                        {opt.desc}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>

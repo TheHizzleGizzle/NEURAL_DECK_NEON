@@ -157,17 +157,18 @@ async function fetchWithTimeout(
   init: RequestInit,
   timeoutMs: number
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
-    if (controller.signal.aborted) {
-      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s.`);
+    if (
+      err instanceof DOMException &&
+      (err.name === "TimeoutError" || err.name === "AbortError")
+    ) {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s.`, {
+        cause: err,
+      });
     }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

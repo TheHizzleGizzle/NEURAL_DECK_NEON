@@ -11,6 +11,7 @@ import { BUILT_IN_SKILLS } from "../data/builtInSkills";
 import { createStarterSession } from "../data/starterSession";
 
 const SESSIONS_KEY = "neural_deck_sessions_v1";
+const CORRUPT_SESSIONS_BACKUP_KEY = "neural_deck_sessions_v1_corrupt_backup";
 const CUSTOM_SKILLS_KEY = "neural_deck_custom_skills_v1";
 const ACTIVE_SESSION_KEY = "neural_deck_active_session_id";
 const TUNING_KEY = "neural_deck_tuning_v2";
@@ -158,8 +159,9 @@ export function saveTuningConfig(config: DeckTuningConfig): void {
 }
 
 export function loadSessions(): BrainstormSession[] {
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(SESSIONS_KEY);
+    raw = localStorage.getItem(SESSIONS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as BrainstormSession[];
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -167,7 +169,14 @@ export function loadSessions(): BrainstormSession[] {
       }
     }
   } catch {
-    // Fall through to starter session
+    // Fall through to starter session after preserving corrupt payload
+  }
+  if (raw) {
+    try {
+      localStorage.setItem(CORRUPT_SESSIONS_BACKUP_KEY, raw);
+    } catch {
+      // Ignore quota errors while saving corrupt backup
+    }
   }
   const starter = createStarterSession();
   saveSessions([starter]);
@@ -175,11 +184,12 @@ export function loadSessions(): BrainstormSession[] {
   return [starter];
 }
 
-export function saveSessions(sessions: BrainstormSession[]): void {
+export function saveSessions(sessions: BrainstormSession[]): boolean {
   try {
     localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    return true;
   } catch {
-    // Ignore quota errors
+    return false;
   }
 }
 
@@ -211,12 +221,13 @@ export function loadCustomSkills(): CreativeSkill[] {
   }
 }
 
-export function saveCustomSkills(skills: CreativeSkill[]): void {
+export function saveCustomSkills(skills: CreativeSkill[]): boolean {
   try {
     const customOnly = skills.filter((s) => !s.builtIn);
     localStorage.setItem(CUSTOM_SKILLS_KEY, JSON.stringify(customOnly));
+    return true;
   } catch {
-    // Ignore storage errors
+    return false;
   }
 }
 

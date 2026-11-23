@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>NEURAL//DECK</title>
+    <script>
+      try {
+        var raw = localStorage.getItem("neural_deck_ui_prefs_v1");
+        if (raw && JSON.parse(raw).theme === "light") {
+          document.documentElement.classList.remove("dark");
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute("content", "#EEF2F8");
+        }
+      } catch (e) {}
+    </script>
     <meta
       name="description"
       content="Pixel-art cyber deck app for AI-assisted brainstorming with branching idea cards, creative skill cartridges, splice mashups, convergence briefs, and an anti-pattern graveyard."

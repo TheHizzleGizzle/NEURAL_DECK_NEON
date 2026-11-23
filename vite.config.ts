@@ -47,13 +47,6 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         // Fonts are self-hosted via @fontsource and precached by globPatterns above.
       },
-      devOptions: {
-        enabled: true,
-        type: "module",
-      },
     }),
   ],
-  server: {
-    hmr: false,
-  },
 });
