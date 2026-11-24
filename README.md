@@ -1,4 +1,5 @@
 # NEURAL//DECK
+commit these changes and push them to main
 
 Pixel-art cyber-deck web application for AI-assisted brainstorming, rewritten in React, TypeScript, Tailwind CSS, and Express from the original Android app.
 
